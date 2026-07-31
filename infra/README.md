@@ -177,6 +177,54 @@ relied on that was covered only by `AdministratorAccess` has to be named
 explicitly in **both** documents, since the boundary caps whatever the identity
 policy grants. Granting it in one and not the other achieves nothing.
 
+Changing which user holds the entry point
+-----------------------------------------
+
+The identity signed in to day to day should be the low privilege one, elevating
+through the role when it needs to. A user named for administration holding the
+entry point invites the opposite habit.
+
+`TrustedUserName` is that identity; `AdditionalTrustedUserName` exists so the
+switch can happen without a gap. Trust both, confirm the new one works, then
+empty the second parameter.
+
+**Renaming the entry point does not by itself reduce anything.** Whatever the
+new user already has, it keeps. If it holds `AdministratorAccess` directly, the
+switch has to be paired with the same detach documented above, or the result is
+a low privilege role sitting next to a user that never needed it. Check first:
+
+```sh
+aws iam list-attached-user-policies --user-name <new-user>
+aws iam list-groups-for-user --user-name <new-user>
+```
+
+Group membership matters as much as attached policies, and is the easier of the
+two to overlook.
+
+Order:
+
+1. deploy with both users named, so neither loses access
+2. verify the new user can assume the role
+3. detach `AdministratorAccess` from the new user if it has it, following the
+   same sequence as above
+4. redeploy with `AdditionalTrustedUserName=""` to drop the old user
+5. retire the old user's access key once nothing depends on it
+
+### A boundary on an interactive identity
+
+Applying `agent-session-boundary` to a user that signs in to the console is a
+larger step than applying it to a programmatic one, and is best left until last.
+
+A boundary denies everything it does not name, and what an interactive session
+needs is harder to enumerate than it looks. Detaching `AdministratorAccess` from
+this account's user silently removed the sign in actions the CLI's browser login
+depends on, and the failure did not appear until the cached credential expired
+some time later. A boundary would have blocked the repair as well as the
+original permission.
+
+Attach the assume only policy first, work normally for a while, and read
+CloudTrail for denied calls before adding the ceiling.
+
 Making the reduction durable
 ----------------------------
 

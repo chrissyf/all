@@ -9,9 +9,20 @@ Description: >-
 Parameters:
   TrustedUserName:
     Type: String
+    Default: christian
+    Description: >-
+      Name of the IAM user permitted to assume the agent session role. This is
+      the identity signed in to day to day, held at low privilege and elevating
+      through the role only when it needs to.
+
+  AdditionalTrustedUserName:
+    Type: String
     Default: christianAdmin
     Description: >-
-      Name of the IAM user permitted to assume the agent session role.
+      A second IAM user also permitted to assume the role. Exists so the trusted
+      identity can be changed without a gap: trust both, verify the new one
+      works, then set this to an empty string to drop the old one. Leave empty
+      when only one user should hold the entry point.
 
   RoleName:
     Type: String
@@ -49,6 +60,7 @@ Parameters:
 Conditions:
   MfaRequired: !Equals [!Ref RequireMFA, "true"]
   ManageTrustedUserPolicy: !Equals [!Ref AttachAssumeOnlyPolicy, "true"]
+  HasAdditionalUser: !Not [!Equals [!Ref AdditionalTrustedUserName, ""]]
 
 Resources:
   AgentSessionRole:
@@ -64,7 +76,11 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${TrustedUserName}"
+              AWS: !If
+                - HasAdditionalUser
+                - - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${TrustedUserName}"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${AdditionalTrustedUserName}"
+                - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${TrustedUserName}"
             Action: sts:AssumeRole
             Condition: !If
               - MfaRequired
@@ -91,8 +107,10 @@ Resources:
       Description: >-
         Permits assuming the agent session role and managing the caller's own
         sign in credentials, and nothing else.
-      Users:
-        - !Ref TrustedUserName
+      Users: !If
+        - HasAdditionalUser
+        - [!Ref TrustedUserName, !Ref AdditionalTrustedUserName]
+        - [!Ref TrustedUserName]
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
