@@ -1,0 +1,46 @@
+{
+  // Editor behavior
+  "editor.formatOnSave": true,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true,
+    "editor.rulers": [100]
+  },
+
+  // rust-analyzer
+  // Run clippy instead of `cargo check` so lints show up as you type.
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.check.extraArgs": ["--", "-W", "clippy::all"],
+  "rust-analyzer.cargo.features": "all",
+  "rust-analyzer.checkOnSave": true,
+
+  // Inlay hints: types and parameter names inline. Toggle with the
+  // "Editor > Inlay Hints: Enabled" setting if they get noisy.
+  "rust-analyzer.inlayHints.typeHints.enable": true,
+  "rust-analyzer.inlayHints.parameterHints.enable": true,
+  "rust-analyzer.inlayHints.chainingHints.enable": true,
+  "rust-analyzer.inlayHints.closureReturnTypeHints.enable": "with_block",
+
+  // Import style: prefer `use foo::bar;` over inline paths, group std/extern/self.
+  "rust-analyzer.imports.granularity.group": "module",
+  "rust-analyzer.imports.prefix": "crate",
+
+  // Point rust-analyzer at the crate(s) in this repo. Add each Cargo.toml
+  // path here if the manifest is not at the workspace root.
+  // "rust-analyzer.linkedProjects": ["./Cargo.toml"],
+
+  // Keep target/ out of the file explorer and search.
+  "files.exclude": {
+    "**/target": true
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/Cargo.lock": true
+  },
+  "files.watcherExclude": {
+    "**/target/**": true
+  }
+}
