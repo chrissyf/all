@@ -156,14 +156,84 @@ Console work needs a role switch rather than a direct sign in. The stack output
 `ConsoleSwitchRoleUrl` is the link. For the CLI, the `[profile agent]` block
 above refreshes sessions automatically.
 
-What still is not closed
-------------------------
+Making the reduction durable
+----------------------------
 
-Nothing prevents a new access key being minted on the user, since
-`agent-session-assume-only` permits self service key management by design. A
-permissions boundary or an SCP is the durable control there, and neither is in
-this template.
+Detaching `AdministratorAccess` removes today's standing privilege, but it does
+not stop the policy being reattached, and a new access key minted on the user
+inherits whatever is attached at the time. `agent-session-assume-only` permits
+self service key management by design, so that path stays open.
 
-The stronger end state is IAM Identity Center, where no permanent key exists at
-all and sessions are established through a browser login. This template is the
-step that does not require that migration first.
+`agent-session-boundary` is the ceiling. Effective permissions are the
+intersection of a principal's attached policies and its boundary, and a boundary
+grants nothing by itself, so with it in place reattaching `AdministratorAccess`
+to the user would confer nothing beyond assuming the role and managing its own
+credentials.
+
+Apply it after the swap is complete and verified:
+
+```sh
+aws iam put-user-permissions-boundary \
+  --user-name christianAdmin \
+  --permissions-boundary arn:aws:iam::<account-id>:policy/agent-session-boundary \
+  --region eu-central-1
+```
+
+Confirm:
+
+```sh
+aws iam get-user --user-name christianAdmin --query "User.PermissionsBoundary"
+```
+
+To remove it, `aws iam delete-user-permissions-boundary --user-name
+christianAdmin`. The boundary mirrors `agent-session-assume-only`, so applying
+it changes nothing about what works today. That is the intent: it is a ceiling,
+not a further reduction.
+
+**Keep the two documents in step.** A boundary narrower than the attached policy
+silently breaks whatever falls outside it. If `agent-session-assume-only` gains
+a permission, the boundary needs it too.
+
+What a boundary on the user does not cover
+------------------------------------------
+
+The boundary constrains the user, not the role. `agent-session-admin` still has
+`AdministratorAccess`, so anything holding a session from it can create a fresh
+IAM user with `AdministratorAccess` and a permanent key, reproducing exactly the
+arrangement this stack exists to remove.
+
+Closing that requires constraining the role itself, either with a `Deny` on
+`iam:CreateUser` and `iam:CreateRole` unless the request carries a permissions
+boundary, or with a service control policy. An SCP is the stronger of the two
+because it cannot be edited from inside the account it governs, but SCPs require
+AWS Organizations, which this account is not part of.
+
+Neither is in this template. The `Deny` variant is a small addition; the SCP
+route depends on the Organizations decision described below.
+
+IAM Identity Center
+-------------------
+
+The end state where no permanent key exists at all. Access is established
+through a browser login (`aws sso login`), credentials are short lived by
+construction, and there is no `AKIA` key anywhere to leak or rotate.
+
+Reaching it from a standalone account is not a small change. Identity Center
+offers two instance types, and the distinction decides the work:
+
+- an **account instance** can be created in a standalone account, but does not
+  support AWS account access or permission sets, so it cannot replace the IAM
+  user for this purpose
+- an **organization instance** does support permission sets and account access,
+  and requires AWS Organizations
+
+So adopting Identity Center here means first creating an organization with this
+account as its management account. That is a structural change to the account,
+awkward to reverse, and it brings its own surface. It also unlocks SCPs, which
+is the durable control missing above, so the two open items resolve together or
+not at all.
+
+Worth doing when the account grows past one person or one workload. For a single
+operator on a single account, the role plus boundary arrangement in this stack
+already removes the standing credential, and the remaining gain is narrower than
+the migration cost.
