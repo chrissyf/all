@@ -36,8 +36,19 @@ Parameters:
       MFA. Keep this false for non interactive agent sessions, which have no
       way to answer an MFA prompt.
 
+  AttachAssumeOnlyPolicy:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      When true, attach the assume only policy to the trusted user. This is
+      purely additive while AdministratorAccess is still attached to that user,
+      so deploying it cannot remove access. Detaching AdministratorAccess is a
+      separate manual step, documented in the README.
+
 Conditions:
   MfaRequired: !Equals [!Ref RequireMFA, "true"]
+  ManageTrustedUserPolicy: !Equals [!Ref AttachAssumeOnlyPolicy, "true"]
 
 Resources:
   AgentSessionRole:
@@ -66,6 +77,55 @@ Resources:
         - Key: purpose
           Value: agent-session
 
+  # Intended replacement for AdministratorAccess on the trusted user. Attaching
+  # it is additive and therefore safe on its own: while AdministratorAccess is
+  # still attached the user keeps every permission it had, because IAM takes the
+  # union of allows. Privilege only drops at the point AdministratorAccess is
+  # detached, which is deliberately left as a manual step so it can be done
+  # after verifying that role assumption works.
+  AgentAssumeOnlyPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Condition: ManageTrustedUserPolicy
+    Properties:
+      ManagedPolicyName: agent-session-assume-only
+      Description: >-
+        Permits assuming the agent session role and managing the caller's own
+        sign in credentials, and nothing else.
+      Users:
+        - !Ref TrustedUserName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssumeAgentSessionRole
+            Effect: Allow
+            Action: sts:AssumeRole
+            Resource: !GetAtt AgentSessionRole.Arn
+
+          # Without this the user cannot rotate its own key or change its own
+          # password once AdministratorAccess is gone, which would make routine
+          # credential hygiene require a role switch every time. Scoped to the
+          # calling user only, via the aws:username policy variable.
+          - Sid: ManageOwnCredentials
+            Effect: Allow
+            Action:
+              - iam:ChangePassword
+              - iam:CreateAccessKey
+              - iam:DeleteAccessKey
+              - iam:GetUser
+              - iam:ListAccessKeys
+              - iam:UpdateAccessKey
+              - iam:ListMFADevices
+            Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${!aws:username}"
+
+          # Read only context the console needs to render a usable sign in and
+          # security credentials page.
+          - Sid: ReadAccountContext
+            Effect: Allow
+            Action:
+              - iam:GetAccountPasswordPolicy
+              - iam:ListAccountAliases
+            Resource: "*"
+
 Outputs:
   RoleArn:
     Description: ARN of the agent session role.
@@ -78,3 +138,14 @@ Outputs:
     Value: !Sub >-
       aws sts assume-role --role-arn ${AgentSessionRole.Arn}
       --role-session-name agent --duration-seconds ${MaxSessionSeconds}
+
+  ConsoleSwitchRoleUrl:
+    Description: Console URL for switching into the agent session role.
+    Value: !Sub >-
+      https://signin.aws.amazon.com/switchrole?account=${AWS::AccountId}&roleName=${RoleName}&displayName=${RoleName}
+
+  AssumeOnlyPolicyArn:
+    Condition: ManageTrustedUserPolicy
+    Description: >-
+      Policy intended to replace AdministratorAccess on the trusted user.
+    Value: !Ref AgentAssumeOnlyPolicy
