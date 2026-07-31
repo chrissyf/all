@@ -52,11 +52,30 @@
   "python.testing.unittestEnabled": false,
   "python.testing.pytestArgs": ["python/tests"],
 
+  // ---------------------------------------------------------- C# / WPF ---
+  "[csharp]": {
+    "editor.defaultFormatter": "ms-dotnettools.csharp",
+    "editor.formatOnSave": true,
+    "editor.rulers": [120]
+  },
+  "[xml]": {
+    "editor.formatOnSave": false
+  },
+
+  // The repository holds more than one solution, so name the one the C#
+  // extension should load instead of letting it prompt on every start.
+  "dotnet.defaultSolution": "csharp/App.sln",
+  "dotnet.completion.showCompletionItemsFromUnimportedNamespaces": true,
+  "dotnet.inlayHints.enableInlayHintsForParameters": true,
+  "omnisharp.enableEditorConfigSupport": true,
+
   // ------------------------------------------------------------ Explorer ---
   "files.exclude": {
     "**/target": true,
     "**/__pycache__": true,
-    "**/*.egg-info": true
+    "**/*.egg-info": true,
+    "**/bin": true,
+    "**/obj": true
   },
   "search.exclude": {
     "**/target": true,
@@ -64,10 +83,14 @@
     "**/.venv": true,
     "**/.ruff_cache": true,
     "**/.mypy_cache": true,
-    "**/.pytest_cache": true
+    "**/.pytest_cache": true,
+    "**/bin": true,
+    "**/obj": true
   },
   "files.watcherExclude": {
     "**/target/**": true,
-    "**/.venv/**": true
+    "**/.venv/**": true,
+    "**/bin/**": true,
+    "**/obj/**": true
   }
 }
