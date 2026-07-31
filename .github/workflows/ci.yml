@@ -78,10 +78,10 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore App.sln
+        run: dotnet restore WpfApp.sln
 
       - name: Build
-        run: dotnet build App.sln --no-restore -c Release -p:ContinuousIntegrationBuild=true
+        run: dotnet build WpfApp.sln --no-restore -c Release -p:ContinuousIntegrationBuild=true
 
       - name: Test
-        run: dotnet test App.sln --no-build -c Release
+        run: dotnet test WpfApp.sln --no-build -c Release

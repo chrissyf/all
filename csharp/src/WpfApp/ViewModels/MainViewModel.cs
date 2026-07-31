@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace App.ViewModels;
+namespace WpfApp.ViewModels;
 
 /// <summary>View model backing <see cref="MainWindow"/>.</summary>
 public class MainViewModel : INotifyPropertyChanged

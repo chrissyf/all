@@ -1,7 +1,7 @@
-using App.ViewModels;
+using WpfApp.ViewModels;
 using Xunit;
 
-namespace App.Tests;
+namespace WpfApp.Tests;
 
 public class MainViewModelTests
 {

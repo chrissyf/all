@@ -1,7 +1,7 @@
-<Window x:Class="App.MainWindow"
+<Window x:Class="WpfApp.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="clr-namespace:App.ViewModels"
+        xmlns:vm="clr-namespace:WpfApp.ViewModels"
         Title="App" Height="300" Width="500">
 
   <Window.DataContext>

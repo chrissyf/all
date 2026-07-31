@@ -62,9 +62,9 @@
     "editor.formatOnSave": false
   },
 
-  // The repository holds more than one solution, so name the one the C#
-  // extension should load instead of letting it prompt on every start.
-  "dotnet.defaultSolution": "csharp/App.sln",
+  // The solution is not at the workspace root, so name it explicitly
+  // instead of letting the C# extension prompt on every start.
+  "dotnet.defaultSolution": "csharp/WpfApp.sln",
   "dotnet.completion.showCompletionItemsFromUnimportedNamespaces": true,
   "dotnet.inlayHints.enableInlayHintsForParameters": true,
   "omnisharp.enableEditorConfigSupport": true,
