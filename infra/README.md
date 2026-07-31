@@ -28,16 +28,16 @@ aws cloudformation deploy \
   --template-file infra/agent-session-role.yaml \
   --stack-name agent-session-role \
   --capabilities CAPABILITY_NAMED_IAM \
-  --region us-east-1
+  --region eu-central-1
 ```
 
 `CAPABILITY_NAMED_IAM` is required because the role is created with an explicit
 name.
 
-**Always pass `--region us-east-1`.** IAM is a global service but
+**Always pass `--region eu-central-1`.** IAM is a global service but
 CloudFormation stacks are regional, and this stack is the one that owns the
 role. Deploying without the flag targets whatever the caller's default region
-is; if that is not `us-east-1` CloudFormation sees no stack there, tries to
+is; if that is not `eu-central-1` CloudFormation sees no stack there, tries to
 create the role a second time, and fails with
 
 ```
@@ -98,13 +98,13 @@ aws cloudformation deploy \
   --template-file infra/agent-session-role.yaml \
   --stack-name agent-session-role \
   --capabilities CAPABILITY_NAMED_IAM \
-  --region us-east-1
+  --region eu-central-1
 ```
 
 This is safe to run while `AdministratorAccess` is still attached. IAM takes the
 union of allows, so the user gains the assume grant and loses nothing.
 
-Pass `--region us-east-1`, for the reason given above. Deploying into any other
+Pass `--region eu-central-1`, for the reason given above. Deploying into any other
 region fails on the role name rather than updating this stack.
 
 ### 2. Verify role assumption works
