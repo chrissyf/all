@@ -1,0 +1,96 @@
+{
+  // Editor behavior
+  "editor.formatOnSave": true,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // ---------------------------------------------------------------- Rust ---
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true,
+    "editor.rulers": [100]
+  },
+
+  // The Cargo workspace lives in rust/, not at the repository root, so
+  // rust-analyzer needs to be pointed at its manifest explicitly.
+  "rust-analyzer.linkedProjects": ["./rust/Cargo.toml"],
+
+  // Run clippy instead of `cargo check` so lints show up as you type.
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.check.extraArgs": ["--all-targets"],
+  "rust-analyzer.cargo.features": "all",
+  "rust-analyzer.checkOnSave": true,
+
+  // Inlay hints: types and parameter names inline. Toggle with the
+  // "Editor > Inlay Hints: Enabled" setting if they get noisy.
+  "rust-analyzer.inlayHints.typeHints.enable": true,
+  "rust-analyzer.inlayHints.parameterHints.enable": true,
+  "rust-analyzer.inlayHints.chainingHints.enable": true,
+  "rust-analyzer.inlayHints.closureReturnTypeHints.enable": "with_block",
+
+  // Import style: prefer `use foo::bar;` over inline paths, group std/extern/self.
+  "rust-analyzer.imports.granularity.group": "module",
+  "rust-analyzer.imports.prefix": "crate",
+
+  // -------------------------------------------------------------- Python ---
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.rulers": [100],
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+
+  // src/ layout: tell the language server where the importable package lives
+  // so `from app.main import ...` resolves in the editor.
+  "python.analysis.extraPaths": ["./python/src"],
+  "python.analysis.typeCheckingMode": "standard",
+
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["python/tests"],
+
+  // ---------------------------------------------------------- C# / WPF ---
+  "[csharp]": {
+    "editor.defaultFormatter": "ms-dotnettools.csharp",
+    "editor.formatOnSave": true,
+    "editor.rulers": [120]
+  },
+  "[xml]": {
+    "editor.formatOnSave": false
+  },
+
+  // The solution is not at the workspace root, so name it explicitly
+  // instead of letting the C# extension prompt on every start.
+  "dotnet.defaultSolution": "csharp/WpfApp.sln",
+  "dotnet.completion.showCompletionItemsFromUnimportedNamespaces": true,
+  "dotnet.inlayHints.enableInlayHintsForParameters": true,
+  "omnisharp.enableEditorConfigSupport": true,
+
+  // ------------------------------------------------------------ Explorer ---
+  "files.exclude": {
+    "**/target": true,
+    "**/__pycache__": true,
+    "**/*.egg-info": true,
+    "**/bin": true,
+    "**/obj": true
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/Cargo.lock": true,
+    "**/.venv": true,
+    "**/.ruff_cache": true,
+    "**/.mypy_cache": true,
+    "**/.pytest_cache": true,
+    "**/bin": true,
+    "**/obj": true
+  },
+  "files.watcherExclude": {
+    "**/target/**": true,
+    "**/.venv/**": true,
+    "**/bin/**": true,
+    "**/obj/**": true
+  }
+}

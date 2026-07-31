@@ -1,0 +1,16 @@
+{
+  // Extensions referenced by settings.json as the formatters and language
+  // servers for each subspace. VS Code offers these the first time the
+  // folder is opened.
+  "recommendations": [
+    // rust/
+    "rust-lang.rust-analyzer",
+    "tamasfe.even-better-toml",
+    // python/
+    "ms-python.python",
+    "charliermarsh.ruff",
+    // csharp/
+    "ms-dotnettools.csharp",
+    "ms-dotnettools.csdevkit"
+  ]
+}
