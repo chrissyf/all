@@ -1,0 +1,56 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs,xaml}]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+[*.xaml]
+indent_size = 2
+
+[*.{csproj,props,targets}]
+indent_style = space
+indent_size = 2
+
+[*.cs]
+# Namespaces
+csharp_style_namespace_declarations = file_scoped:warning
+
+# `var` usage
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+
+# Expression-bodied members
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+
+# Braces are required even for single statements
+csharp_prefer_braces = true:warning
+
+# Modern language features
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_style_prefer_pattern_matching = true:suggestion
+dotnet_style_prefer_conditional_expression_over_assignment = true:suggestion
+
+# `this.` is not used
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_event = false:warning
+
+# Naming: private fields are _camelCase
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_prefix
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+dotnet_naming_style.underscore_prefix.required_prefix = _
+dotnet_naming_style.underscore_prefix.capitalization = camel_case
