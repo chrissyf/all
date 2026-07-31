@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >-
+  Time boxed administrative role for agent sessions. Replaces the practice of
+  placing a long lived IAM access key with AdministratorAccess directly into an
+  agent environment, where the credential never expires and is readable by
+  anything running in the container.
+
+Parameters:
+  TrustedUserName:
+    Type: String
+    Default: christianAdmin
+    Description: >-
+      Name of the IAM user permitted to assume the agent session role.
+
+  RoleName:
+    Type: String
+    Default: agent-session-admin
+    Description: Name of the role that agent sessions assume.
+
+  MaxSessionSeconds:
+    Type: Number
+    Default: 3600
+    MinValue: 3600
+    MaxValue: 43200
+    Description: >-
+      Upper bound on a session's lifetime, in seconds. AWS permits 3600 to
+      43200. Credentials stop working once this elapses.
+
+  RequireMFA:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      When true, the role is assumable only by a caller who authenticated with
+      MFA. Keep this false for non interactive agent sessions, which have no
+      way to answer an MFA prompt.
+
+Conditions:
+  MfaRequired: !Equals [!Ref RequireMFA, "true"]
+
+Resources:
+  AgentSessionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: >-
+        Assumed by agent sessions in place of a standing access key. Grants
+        AdministratorAccess for the duration of a single session only.
+      MaxSessionDuration: !Ref MaxSessionSeconds
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${TrustedUserName}"
+            Action: sts:AssumeRole
+            Condition: !If
+              - MfaRequired
+              - Bool:
+                  aws:MultiFactorAuthPresent: "true"
+              - !Ref AWS::NoValue
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess"
+      Tags:
+        - Key: purpose
+          Value: agent-session
+
+Outputs:
+  RoleArn:
+    Description: ARN of the agent session role.
+    Value: !GetAtt AgentSessionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-RoleArn"
+
+  AssumeRoleCommand:
+    Description: Command that mints a short lived session from this role.
+    Value: !Sub >-
+      aws sts assume-role --role-arn ${AgentSessionRole.Arn}
+      --role-session-name agent --duration-seconds ${MaxSessionSeconds}
