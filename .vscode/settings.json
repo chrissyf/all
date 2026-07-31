@@ -4,16 +4,20 @@
   "files.trimTrailingWhitespace": true,
   "files.insertFinalNewline": true,
 
+  // ---------------------------------------------------------------- Rust ---
   "[rust]": {
     "editor.defaultFormatter": "rust-lang.rust-analyzer",
     "editor.formatOnSave": true,
     "editor.rulers": [100]
   },
 
-  // rust-analyzer
+  // The Cargo workspace lives in rust/, not at the repository root, so
+  // rust-analyzer needs to be pointed at its manifest explicitly.
+  "rust-analyzer.linkedProjects": ["./rust/Cargo.toml"],
+
   // Run clippy instead of `cargo check` so lints show up as you type.
   "rust-analyzer.check.command": "clippy",
-  "rust-analyzer.check.extraArgs": ["--", "-W", "clippy::all"],
+  "rust-analyzer.check.extraArgs": ["--all-targets"],
   "rust-analyzer.cargo.features": "all",
   "rust-analyzer.checkOnSave": true,
 
@@ -28,19 +32,42 @@
   "rust-analyzer.imports.granularity.group": "module",
   "rust-analyzer.imports.prefix": "crate",
 
-  // Point rust-analyzer at the crate(s) in this repo. Add each Cargo.toml
-  // path here if the manifest is not at the workspace root.
-  // "rust-analyzer.linkedProjects": ["./Cargo.toml"],
+  // -------------------------------------------------------------- Python ---
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.rulers": [100],
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
 
-  // Keep target/ out of the file explorer and search.
+  // src/ layout: tell the language server where the importable package lives
+  // so `from app.main import ...` resolves in the editor.
+  "python.analysis.extraPaths": ["./python/src"],
+  "python.analysis.typeCheckingMode": "standard",
+
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["python/tests"],
+
+  // ------------------------------------------------------------ Explorer ---
   "files.exclude": {
-    "**/target": true
+    "**/target": true,
+    "**/__pycache__": true,
+    "**/*.egg-info": true
   },
   "search.exclude": {
     "**/target": true,
-    "**/Cargo.lock": true
+    "**/Cargo.lock": true,
+    "**/.venv": true,
+    "**/.ruff_cache": true,
+    "**/.mypy_cache": true,
+    "**/.pytest_cache": true
   },
   "files.watcherExclude": {
-    "**/target/**": true
+    "**/target/**": true,
+    "**/.venv/**": true
   }
 }
