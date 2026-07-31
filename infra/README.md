@@ -27,11 +27,27 @@ later, once there is a record of which API calls sessions actually make.
 aws cloudformation deploy \
   --template-file infra/agent-session-role.yaml \
   --stack-name agent-session-role \
-  --capabilities CAPABILITY_NAMED_IAM
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-east-1
 ```
 
 `CAPABILITY_NAMED_IAM` is required because the role is created with an explicit
 name.
+
+**Always pass `--region us-east-1`.** IAM is a global service but
+CloudFormation stacks are regional, and this stack is the one that owns the
+role. Deploying without the flag targets whatever the caller's default region
+is; if that is not `us-east-1` CloudFormation sees no stack there, tries to
+create the role a second time, and fails with
+
+```
+Resource of type 'AWS::IAM::Role' with identifier 'agent-session-admin'
+already exists. (HandlerErrorCode: AlreadyExists)
+```
+
+That failure is harmless, since the pre existing role is never adopted and so
+is never deleted by the rollback, but the failed stack lands in
+`ROLLBACK_COMPLETE` and must be deleted before the region can be retried.
 
 ### Use
 
@@ -81,11 +97,15 @@ additive and reversible; do not run step 3 until step 2 has succeeded.
 aws cloudformation deploy \
   --template-file infra/agent-session-role.yaml \
   --stack-name agent-session-role \
-  --capabilities CAPABILITY_NAMED_IAM
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-east-1
 ```
 
 This is safe to run while `AdministratorAccess` is still attached. IAM takes the
 union of allows, so the user gains the assume grant and loses nothing.
+
+Pass `--region us-east-1`, for the reason given above. Deploying into any other
+region fails on the role name rather than updating this stack.
 
 ### 2. Verify role assumption works
 
