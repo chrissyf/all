@@ -126,6 +126,18 @@ Resources:
               - iam:ListAccountAliases
             Resource: "*"
 
+          # The AWS CLI's browser based sign in (aws login) exchanges an
+          # authorization code for short lived credentials, and needs these two
+          # actions to do it. AdministratorAccess covered them implicitly, so
+          # removing it broke credential refresh for any profile configured that
+          # way. Granting them here restores that path without restoring admin.
+          - Sid: BrowserSignIn
+            Effect: Allow
+            Action:
+              - signin:AuthorizeOAuth2Access
+              - signin:CreateOAuth2Token
+            Resource: "*"
+
   # Ceiling on what the trusted user can ever hold, regardless of what is
   # attached to it later. Detaching AdministratorAccess removes today's standing
   # privilege but does not stop it being reattached, nor stop a new key on the
@@ -173,6 +185,13 @@ Resources:
             Action:
               - iam:GetAccountPasswordPolicy
               - iam:ListAccountAliases
+            Resource: "*"
+
+          - Sid: BrowserSignIn
+            Effect: Allow
+            Action:
+              - signin:AuthorizeOAuth2Access
+              - signin:CreateOAuth2Token
             Resource: "*"
 
 Outputs:

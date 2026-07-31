@@ -156,6 +156,27 @@ Console work needs a role switch rather than a direct sign in. The stack output
 `ConsoleSwitchRoleUrl` is the link. For the CLI, the `[profile agent]` block
 above refreshes sessions automatically.
 
+### If the profile uses `aws login`
+
+The CLI's browser based sign in needs `signin:AuthorizeOAuth2Access` and
+`signin:CreateOAuth2Token`. `AdministratorAccess` covered those implicitly, so
+detaching it breaks credential refresh for a profile configured that way, with
+
+```
+Unable to create or refresh login credentials due to insufficient permissions.
+You may be missing permission for the 'signin:CreateOAuth2Token' action.
+```
+
+Both policies here grant those actions, so the path keeps working. The failure
+mode is worth knowing anyway, because it is delayed: existing credentials keep
+working until they expire, and only the refresh fails. A profile that looks
+healthy immediately after the detach can stop working hours later.
+
+This is the general hazard of the boundary, in concrete form. Anything the user
+relied on that was covered only by `AdministratorAccess` has to be named
+explicitly in **both** documents, since the boundary caps whatever the identity
+policy grants. Granting it in one and not the other achieves nothing.
+
 Making the reduction durable
 ----------------------------
 
