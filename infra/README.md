@@ -211,6 +211,85 @@ recreate. Deleting and redeploying the stack leaves the boundary untouched, and
 an account built from this template alone would not have one. Folding it into
 the template is the obvious next change.
 
+Retiring the christian user
+---------------------------
+
+`christian` is a second IAM user holding standing `s3:*` on `*` through
+`iampolicys3full`, plus `IAMReadOnlyAccess` through membership of the
+`iamreadonly` group. Note that the group is a second source of permission and
+does not appear in `list-attached-user-policies`. It has a console password and
+a virtual MFA device, and no access keys. None of this is reachable through the
+agent session role, and none of it carries a permissions boundary.
+
+Retiring it removes the last standing grant of real power in the account.
+`christianAdmin` has its own console password and MFA device, so console access
+survives the deletion.
+
+**CloudFormation cannot do this.** The user, `iampolicys3full`, the
+`iamreadonly` group and `agent-session-boundary` were all created out of band,
+and a stack deletes only the resources it owns. Retirement is manual, in the
+order below, because IAM refuses to delete a user that still has dependents
+attached.
+
+Run every command here with `--profile agent`. `christianAdmin` cannot perform
+them directly: the boundary is an allow list, and IAM writes against another
+user are not on it.
+
+### 1. Confirm nothing depends on it
+
+```sh
+aws iam list-access-keys --user-name christian --profile agent
+```
+
+Expect an empty list. A key here means something may be authenticating as this
+user, and that should be tracked down before continuing.
+
+### 2. Remove the console path
+
+```sh
+SERIAL=$(aws iam list-mfa-devices --user-name christian \
+  --query 'MFADevices[0].SerialNumber' --output text --profile agent)
+
+aws iam delete-login-profile --user-name christian --profile agent
+aws iam deactivate-mfa-device --user-name christian \
+  --serial-number "$SERIAL" --profile agent
+aws iam delete-virtual-mfa-device --serial-number "$SERIAL" --profile agent
+```
+
+### 3. Detach permissions
+
+```sh
+aws iam remove-user-from-group --user-name christian \
+  --group-name iamreadonly --profile agent
+
+for P in \
+  arn:aws:iam::aws:policy/IAMUserChangePassword \
+  arn:aws:iam::aws:policy/SignInLocalDevelopmentAccess \
+  arn:aws:iam::<account-id>:policy/iampolicys3full
+do
+  aws iam detach-user-policy --user-name christian \
+    --policy-arn "$P" --profile agent
+done
+```
+
+### 4. Delete the user
+
+```sh
+aws iam delete-user --user-name christian --profile agent
+```
+
+### 5. Confirm
+
+```sh
+aws iam get-user --user-name christian --profile agent
+```
+
+`NoSuchEntity` is the expected result.
+
+`iampolicys3full` and the `iamreadonly` group outlive the user. The group has no
+other members, so both can be deleted separately once nothing else references
+them.
+
 What still is not closed
 ------------------------
 
@@ -220,6 +299,15 @@ Nothing prevents a new access key being minted on the user, since
 for the same reason. Such a key is far less useful than it once was, because
 the boundary caps it to assuming the role rather than acting directly, but it
 is still a permanent credential.
+
+This is not hypothetical. `christianAdmin` currently has an active access key,
+created after the role went in and last used against `sts`. Because the boundary
+permits assuming the agent session role, that key pair reaches
+`AdministratorAccess` in a single hop, and `RequireMFA` defaults to `false`, so
+nothing else stands in the way. It is a weaker credential than the one this
+template was written to remove, since it can only assume the role rather than
+act directly, but it is still permanent and still ends at administrator. Delete
+it if nothing depends on it.
 
 An SCP is the durable control there, and it is not in this template. Neither is
 the boundary, as noted above.
