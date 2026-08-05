@@ -140,15 +140,38 @@ the change.
 
 ### Rollback
 
+A permissions boundary, `agent-session-boundary`, is attached to
+`christianAdmin`, and it changes how rollback works. Re attaching
+`AdministratorAccess` no longer restores administrative access, because
+effective permissions are the intersection of the identity policy and the
+boundary, and the boundary does not allow those actions. The user cannot run
+the command either: `iam:AttachUserPolicy` against its own user evaluates to
+`implicitDeny`.
+
+The lever is the role, not the user. The role holds `AdministratorAccess`, is
+not subject to the user's boundary, and the boundary explicitly permits
+assuming it, so this path stays reachable even when the user can do nothing
+else:
+
 ```sh
+aws iam delete-user-permissions-boundary \
+  --user-name christianAdmin \
+  --profile agent
+
 aws iam attach-user-policy \
   --user-name christianAdmin \
-  --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
+  --policy-arn arn:aws:iam::aws:policy/AdministratorAccess \
+  --profile agent
 ```
 
-If the user is somehow left with no working administrative path, the account
-root user is the recovery route. Root is unaffected by any of this, because
-these are IAM user permissions and root is not an IAM user.
+Removing the boundary is the step that matters. Without it the second command
+is inert.
+
+If the role is unusable as well, the account root user is the recovery route.
+Root is unaffected by any of this, because these are IAM user permissions and
+root is not an IAM user. Confirm root sign in actually works before relying on
+it. A root password nobody has used in months is not a break glass path, and
+past this point there is no other way back.
 
 ### After the swap
 
@@ -156,13 +179,50 @@ Console work needs a role switch rather than a direct sign in. The stack output
 `ConsoleSwitchRoleUrl` is the link. For the CLI, the `[profile agent]` block
 above refreshes sessions automatically.
 
+Permissions boundary
+--------------------
+
+`christianAdmin` carries a permissions boundary, `agent-session-boundary`. A
+boundary caps what a user can do regardless of which policies are attached:
+effective permissions are the intersection of the two. Attaching
+`AdministratorAccess` on top of it grants nothing the boundary does not already
+allow, which is why the rollback above has to remove the boundary first.
+
+Version `v2` allows four things and nothing else:
+
+- `sts:AssumeRole`, on `agent-session-admin` only
+- management of the caller's own sign in credentials, scoped to
+  `${aws:username}`
+- reading account context, `iam:GetAccountPasswordPolicy` and
+  `iam:ListAccountAliases`
+- `signin:AuthorizeOAuth2Access` and `signin:CreateOAuth2Token`
+
+That last pair is load bearing. It is what lets `aws login` work for this user;
+without it the browser sign in fails and the user has no way to obtain
+credentials at all.
+
+The scoping is easy to misread when testing. `sts:AssumeRole` simulated against
+`*` comes back denied, because the boundary grants it only on the one role ARN.
+Simulate against the role ARN itself to get a truthful answer.
+
+**The boundary is not created by `agent-session-role.yaml`.** It was applied out
+of band, so the account carries a control this stack neither manages nor would
+recreate. Deleting and redeploying the stack leaves the boundary untouched, and
+an account built from this template alone would not have one. Folding it into
+the template is the obvious next change.
+
 What still is not closed
 ------------------------
 
 Nothing prevents a new access key being minted on the user, since
-`agent-session-assume-only` permits self service key management by design. A
-permissions boundary or an SCP is the durable control there, and neither is in
-this template.
+`agent-session-assume-only` permits self service key management by design, and
+`agent-session-boundary` allows `iam:CreateAccessKey` on the caller's own user
+for the same reason. Such a key is far less useful than it once was, because
+the boundary caps it to assuming the role rather than acting directly, but it
+is still a permanent credential.
+
+An SCP is the durable control there, and it is not in this template. Neither is
+the boundary, as noted above.
 
 The stronger end state is IAM Identity Center, where no permanent key exists at
 all and sessions are established through a browser login. This template is the
