@@ -13,21 +13,33 @@ of organisation `o-5yw9xjw0it`.
 Current state
 -------------
 
-Identity Center is enabled but not usable. Instance
-`ssoins-7223d6dd9f48d37c`, identity store `d-90667864e1`, in `us-east-1`. It
-holds one user, `cfq`, and one group, `hogpimple`, and **zero permission sets**,
-so nothing is assigned to any account and nobody can sign in through it yet.
+Instance `ssoins-7223d6dd9f48d37c`, identity store `d-90667864e1`, in
+`us-east-1`. It holds one user, `cfruehling`, one permission set,
+`AdministratorAccess` at `PT4H`, and an assignment of that set to this account.
+The portal is `https://d-90667864e1.awsapps.com/start`, verified by an OIDC
+device authorization rather than assumed from the identity store ID.
 
-Access today runs entirely on IAM users:
+The instance was initially empty, holding only `cfq` and a group `hogpimple`
+left over from an Amazon Q attempt. Both were removed once the permission set
+proved out. Amazon Q's free tier signs in with a personal Builder ID and needs
+no Identity Center at all, so nothing depended on them.
+
+Both paths are live at once. Nothing has been cut over, and the IAM users below
+still work exactly as before:
 
 | User | Console | MFA | Permissions | Keys |
 |------|---------|-----|-------------|------|
 | `christian` | yes | yes | `IAMReadOnlyAccess` via `iamreadonly`, plus `iampolicys3full`, `IAMUserChangePassword`, `SignInLocalDevelopmentAccess` | none |
-| `christian2` | yes | **no** | `iampolicys3full` via `2ndGroup` | none |
+| `christian2` | no | no | none | none |
 | `christianAdmin` | yes | yes | `agent-session-assume-only`, capped by `agent-session-boundary` | one, inactive |
 
-`iampolicys3full` is `s3:*` on `*`. It reaches two of the three users by
-different routes, directly on `christian` and through a group on `christian2`.
+`christian2` was stripped of its console login profile and removed from
+`2ndGroup`, leaving an empty user object. It previously had console access with
+no MFA device and `s3:*` through that group. The user itself remains only so the
+change stays reversible.
+
+`iampolicys3full` is `s3:*` on `*`, and still reaches `christian` directly.
+`2ndGroup` still exists and still references the policy, but has no members.
 
 What the migration displaces
 ----------------------------
@@ -82,16 +94,25 @@ from `aws login` to `aws sso login`, and the two should not be mixed.
 New costs
 ---------
 
-Identity Center is regional. This instance lives in `us-east-1` while the account
-default region is `eu-central-1`, so sign in acquires a hard dependency on a
-region nothing else here uses.
+Identity Center is regional, and this instance lives in `us-east-1` while the
+account default region is `eu-central-1`. That is less of an outlier than it
+first appears: `us-east-1` also holds the Agent Toolkit service, which is pinned
+there and cannot be moved, three S3 buckets, and two `AWS-QuickSetup-SSM-*`
+stacks. Only the `agent-session-role` and `cloudtrail-audit` stacks and one
+bucket are in `eu-central-1`.
 
-Deleting an Identity Center instance is disruptive and not a routine operation,
-so enabling it in earnest is closer to a commitment than the current stack is.
+Relocating the instance to `eu-central-1` is possible but not from the CLI. The
+`CreateInstance` API refuses to run in an Organizations management account, which
+this is, and rejects the call with `Organization management account is not
+allowed to perform the operation`. Organization instances can only be enabled
+from the console, so a move means deleting the instance and re-enabling it there,
+with a window in between where the account has no instance at all. Deleting the
+organization to lift that restriction would be a bad trade: an instance in a
+standalone account cannot grant sign in to AWS accounts, only to applications.
 
-Session duration is set per permission set, default one hour, maximum twelve. The
-current role is fixed at one hour by `MaxSessionSeconds`, so this is equivalent
-rather than better.
+Session duration is set per permission set, one hour by default and twelve at
+most; this one is `PT4H`. The agent session role is fixed at one hour by
+`MaxSessionSeconds`, so the permission set is the longer lived of the two.
 
 Sequencing
 ----------
@@ -114,17 +135,20 @@ been used for real work rather than a smoke test.
 Decisions needed first
 ----------------------
 
-Whether `cfq` and `hogpimple` are intended identities or leftovers from enabling
-the instance. Nothing can be assigned until that is settled.
+`cfruehling` has no password yet. The Identity Store API exposes no password
+operations, so the first sign in has to be set up from the console, under Users,
+Reset password. Until that is done the portal path is untested and the IAM users
+must stay.
 
-Whether one permission set or two. The current setup separates a near powerless
-default from an elevated role, and that separation is worth preserving rather
-than collapsing into a single administrator set.
+Whether one permission set or two. The IAM arrangement separates a near powerless
+default from an elevated role that expires. A single `AdministratorAccess` set
+collapses that: every portal session is an administrator session. A second,
+narrower set restores the distinction, and is cheap to add.
 
 Whether `s3:*` on `*` is still the intent for whoever inherits `iampolicys3full`,
 or an artifact worth narrowing while it is being rewritten anyway.
 
-Unrelated to the migration, and worth handling regardless of the outcome:
-`christian2` has console access with no MFA device and `s3:*` through its group,
-and has been dormant since 2026-07-15. It is the weakest identity in the account
-under either design.
+Retirement order, once the portal is proven, is `christian2` first since it is
+already inert, then `christian`, then `christianAdmin` last because it is the one
+currently holding the fort. Retiring any of them before a successful portal sign
+in would leave root as the only way in.
