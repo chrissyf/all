@@ -300,14 +300,25 @@ for the same reason. Such a key is far less useful than it once was, because
 the boundary caps it to assuming the role rather than acting directly, but it
 is still a permanent credential.
 
-This is not hypothetical. `christianAdmin` currently has an active access key,
-created after the role went in and last used against `sts`. Because the boundary
-permits assuming the agent session role, that key pair reaches
-`AdministratorAccess` in a single hop, and `RequireMFA` defaults to `false`, so
-nothing else stands in the way. It is a weaker credential than the one this
-template was written to remove, since it can only assume the role rather than
-act directly, but it is still permanent and still ends at administrator. Delete
-it if nothing depends on it.
+This is not hypothetical. An access key was minted on `christianAdmin` on
+2026-07-29. Because the boundary permits assuming the agent session role, such a
+key pair reaches `AdministratorAccess` in a single hop, and `RequireMFA` defaults
+to `false`, so nothing else stands in the way. It is weaker than the credential
+this template was written to remove, since it can only assume the role rather
+than act directly, but it is still permanent and still ends at administrator.
+
+CloudTrail shows that key used in one session only, on the day it was created:
+34 read only calls enumerating the account, and no `AssumeRole` at any point. Most
+of those reads would be refused by the boundary in force today, which dates the
+boundary to after that session. The key has been dormant since and is now
+`Inactive`. Deactivating rather than deleting keeps the change reversible; delete
+it once a stretch of silence confirms nothing depended on it.
+
+The shape of that episode is worth noting on its own. A key was minted, used once
+to survey the account, and abandoned. The key injected into the agent container
+was a different one again, already deleted by the time it was found there. Keys
+being created per environment and left behind is the pattern this role exists to
+end, and deleting any single key does not end it.
 
 An SCP is the durable control there, and it is not in this template. Neither is
 the boundary, as noted above.
