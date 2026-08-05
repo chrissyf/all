@@ -132,13 +132,25 @@ before the new one is proven.
 Steps 1 and 2 are reversible. Step 3 is not, and should wait until the portal has
 been used for real work rather than a smoke test.
 
-Decisions needed first
-----------------------
+The portal path is proven
+-------------------------
 
-`cfruehling` has no password yet. The Identity Store API exposes no password
-operations, so the first sign in has to be set up from the console, under Users,
-Reset password. Until that is done the portal path is untested and the IAM users
-must stay.
+`cfruehling` has signed in through the portal, with a TOTP device and a passkey
+enrolled, and the resulting session was exercised end to end: a privileged call
+succeeded as
+`assumed-role/AWSReservedSSO_AdministratorAccess_41ddd7ee53190b52/cfruehling`,
+with the profile resolving to `eu-central-1`. The precondition for retiring the
+IAM users is therefore met.
+
+Setting that first password is console only. The Identity Store API exposes no
+password operations, so an admin has to issue one under Users, Reset password.
+The one time password option there is more reliable than the emailed link. Note
+also that the portal expects the username, `cfruehling`, and not an email
+address, which is the likeliest reason a first sign in fails when the password is
+correct.
+
+Decisions still open
+--------------------
 
 Whether one permission set or two. The IAM arrangement separates a near powerless
 default from an elevated role that expires. A single `AdministratorAccess` set
@@ -148,7 +160,9 @@ narrower set restores the distinction, and is cheap to add.
 Whether `s3:*` on `*` is still the intent for whoever inherits `iampolicys3full`,
 or an artifact worth narrowing while it is being rewritten anyway.
 
-Retirement order, once the portal is proven, is `christian2` first since it is
-already inert, then `christian`, then `christianAdmin` last because it is the one
-currently holding the fort. Retiring any of them before a successful portal sign
-in would leave root as the only way in.
+Retirement order is `christian2` first since it is already inert, then
+`christian`, then `christianAdmin` last because it is the one still holding the
+fort. The first two are safe to remove now. `christianAdmin` is worth leaving in
+place until the portal has carried real work for a few days, not because
+anything is unproven but because it is the only remaining path that does not
+depend on Identity Center, and root is what stands behind it.
