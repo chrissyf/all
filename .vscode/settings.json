@@ -83,11 +83,22 @@
   "robotcode.editor.4SpacesTab": true,
 
   // RobotCode needs the interpreter that has robotframework, Browser and
-  // RequestsLibrary installed - that is robot/.venv, not the python/ subspace.
-  // Uncomment the line for your platform, or pick the interpreter with the
-  // "Python: Select Interpreter" command.
-  // "robotcode.python": "${workspaceFolder}/robot/.venv/bin/python",
-  // "robotcode.python": "${workspaceFolder}/robot/.venv/Scripts/python.exe",
+  // RequestsLibrary installed - that is robot/.venv. It takes that from the
+  // Python extension, so point the Python extension at it: uncomment the line
+  // for your platform, or run "Python: Select Interpreter".
+  //
+  // Do not use "robotcode.python" for this. It is deprecated, and RobotCode
+  // hands its value straight to spawn() without expanding ${workspaceFolder},
+  // so a path written that way fails to launch and the extension reports
+  // "Invalid python version for workspace folder". python.defaultInterpreterPath
+  // is resolved by the Python extension and does expand the variable.
+  //
+  // Note this is window-wide: a single-folder window has one active interpreter,
+  // so it applies to the python/ subspace too. Per-folder interpreters need a
+  // multi-root .code-workspace - robot/robot.code-workspace already carries the
+  // robot/ half of this configuration for that reason.
+  // "python.defaultInterpreterPath": "${workspaceFolder}/robot/.venv/bin/python",
+  // "python.defaultInterpreterPath": "${workspaceFolder}/robot/.venv/Scripts/python.exe",
 
   // Where the Test Explorer looks for suites, and where a run from the editor
   // writes log.html/report.html - same layout as the command line.

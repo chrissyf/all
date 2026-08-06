@@ -109,9 +109,20 @@ individual test cases with breakpoints.
 The repository root `.vscode/settings.json` already points it at `robot/tests` and
 `robot/results` and wires up the shared Robocop config. One thing is left to you,
 because it differs per platform: tell RobotCode which interpreter to use.
-Either run **Python: Select Interpreter** and pick `robot/.venv`, or uncomment the
-`robotcode.python` line for your OS in `.vscode/settings.json`.
+RobotCode takes it from the Python extension, so either run
+**Python: Select Interpreter** and pick `robot/.venv`, or uncomment the
+`python.defaultInterpreterPath` line for your OS in `.vscode/settings.json`.
 
-Note that this repository keeps a separate virtualenv per subspace - `robot/.venv`
-here, whatever `python/` uses there - so selecting an interpreter for Robot work
-does not have to disturb the Python subspace.
+Do not reach for the `robotcode.python` setting. It is deprecated, and RobotCode
+passes its value to `spawn()` without expanding `${workspaceFolder}`, so a path
+written that way never starts and you get *"Invalid python version for workspace
+folder"* instead. Only an absolute path works there, which is what
+`python.defaultInterpreterPath` saves you from hardcoding.
+
+This repository keeps a separate virtualenv per subspace - `robot/.venv` here,
+whatever `python/` uses there. A single-folder window still has just one active
+interpreter, so selecting `robot/.venv` at the repository root applies to `python/`
+as well. To keep them genuinely independent, open `robot/robot.code-workspace`
+(it carries this folder's RobotCode settings, interpreter included) or add the
+subspaces as folders in a multi-root workspace, where the Python extension
+resolves an interpreter per folder.
