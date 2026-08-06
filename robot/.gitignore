@@ -9,3 +9,9 @@ results/*
 # Browser library artifacts
 browser/
 node_modules/
+
+# Written by the Python Environments extension, not by hand - this subspace
+# keeps its editor settings in robot.code-workspace. Only this one file: a
+# launch.json or tasks.json added here is worth sharing, so .vscode/ as a
+# whole stays tracked.
+.vscode/settings.json
