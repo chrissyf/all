@@ -62,6 +62,53 @@ jobs:
       - name: Test
         run: pytest
 
+  robot:
+    name: robot
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: robot
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # The Browser library drives a real Playwright runtime, so the browsers
+      # have to be fetched on top of the pip install. Cached because it is the
+      # slowest step in this job by a wide margin.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('robot/requirements.txt') }}
+
+      - name: Install browsers
+        run: rfbrowser init
+
+      - name: Lint
+        run: robocop check
+
+      - name: Format
+        run: robocop format --check
+
+      - name: Test
+        run: robot --outputdir results tests
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: robot-results
+          path: robot/results
+          retention-days: 7
+
   csharp:
     # WPF only builds on Windows, so this job is the sole verification of
     # the XAML and its code-behind.

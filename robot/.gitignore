@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+# Robot writes output.xml, log.html, report.html and failure screenshots here.
+results/*
+!results/.gitkeep
+
+# Browser library artifacts
+browser/
+node_modules/

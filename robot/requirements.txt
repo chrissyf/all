@@ -1,0 +1,15 @@
+# Runtime and tooling for the Robot Framework subspace.
+#
+#   python -m venv .venv && . .venv/bin/activate
+#   pip install -r requirements.txt
+#   rfbrowser init          # downloads the Playwright browsers (~300 MB)
+#
+# Minor versions are pinned so a run is reproducible; bump them deliberately.
+
+robotframework==7.4.2
+robotframework-browser==20.2.0
+robotframework-requests==0.9.7
+
+# Linter and formatter for .robot/.resource files. Robocop 6+ absorbed
+# Robotidy, so `robocop format` replaces the old `robotidy` command.
+robotframework-robocop==8.6.0
