@@ -384,6 +384,18 @@ the user in the group. The template assigns access to a group by default so
 that adding or removing an administrator is a directory change rather than a
 stack update.
 
+Name the group for the access it receives, `administrators` rather than
+`developers`. The permission set this stack creates is `AdministratorAccess`,
+so everyone in the group named here is a full account administrator. A group
+named after a job title stops being true the first time someone joins it who
+should not hold admin, and nothing in the directory flags that drift.
+
+A user can belong to several groups, so keeping a separate `developers` group
+costs nothing now and is where a narrower permission set goes when there is
+one. That narrowing is the same deferred work `agent-session-role.yaml`
+describes: remove the standing credential first, reduce what a session can do
+once there is a record of what it actually calls.
+
 ### 3. Collect the two identifiers
 
 ```sh
