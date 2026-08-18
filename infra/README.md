@@ -1,8 +1,155 @@
 infra
 =====
 
-CloudFormation for account level pieces that support development in this
-repository.
+Account level pieces that support development in this repository: the
+CloudFormation below, and the developer machine setup scripts.
+
+setup-aws-local.sh / setup-aws-local.ps1
+----------------------------------------
+
+Sets up the [Agent Toolkit for AWS](https://github.com/aws/agent-toolkit-for-aws)
+on a developer machine: installs the AWS CLI v2, signs in with `aws login`,
+installs the toolkit (the AWS skills plus the `aws-mcp` server), and writes the
+AWS rules file into a project that does not already carry one.
+
+```sh
+infra/setup-aws-local.sh                 # macOS, Linux, or WSL
+```
+
+```powershell
+.\infra\setup-aws-local.ps1              # Windows, from PowerShell
+```
+
+Both default to `eu-central-1` and take the region as an argument. Both are
+idempotent: a valid session is not thrown away, and an existing `CLAUDE.md`
+that differs from upstream is reported rather than overwritten.
+
+### PowerShell or bash on Windows
+
+Use PowerShell. The toolkit writes skills to `~/.claude/skills` and the MCP
+server entry to `~/.claude.json`, and those have to land in the same home
+directory the coding agent reads from. Installing under WSL while the agent
+runs on Windows produces a clean install in a home directory the agent never
+looks at.
+
+`aws login` also opens a browser. From PowerShell that is the normal Windows
+browser; from WSL it usually prints a localhost URL that resolves inside the
+WSL network namespace and cannot complete.
+
+Run the `.sh` script under WSL only when the agent itself runs under WSL.
+
+### us-east-1 is not a mistake
+
+Step 4 of both scripts passes `--region us-east-1` while everything else uses
+your region. The Agent Toolkit control plane is only reachable there. Swapping
+it for `eu-central-1` fails to resolve the endpoint.
+
+### uv is a real dependency
+
+The `aws-mcp` server is launched as `uvx mcp-proxy-for-aws@latest`. Without
+[uv](https://docs.astral.sh/uv/) on PATH the server entry is written to
+`~/.claude.json` but never starts, and the failure is quiet. Both scripts warn
+when `uvx` is missing rather than failing, since the skills install regardless.
+
+### Headless machines
+
+`aws login` opens a browser and waits on a loopback callback. Over SSH, or in a
+container, that callback is unreachable from the browser you would use. Pass
+`--remote` for the cross device flow, which prints a URL and reads back an
+authorization code:
+
+```sh
+aws login --region eu-central-1 --remote
+```
+
+The code is bound to the PKCE verifier held by that specific process, so the
+command has to stay running while you complete sign in. Backgrounding it and
+returning later invalidates the code.
+
+### Placeholder credentials in agent containers
+
+Some agent environments inject `AWS_ACCESS_KEY_ID=proxy-injected` and a
+matching secret. Environment credentials outrank the profile, so `aws login`
+reports success while every subsequent call fails with `InvalidClientTokenId`.
+Unset both; leave `AWS_CA_BUNDLE` alone, since the proxy needs it.
+
+Visual Studio Code
+------------------
+
+Two extensions are worth having alongside the setup script: Claude Code, and
+the AWS Toolkit.
+
+### Install in this order
+
+1. **Claude Code.** Extensions view, search `Claude Code`, install. Running
+   `claude` in the integrated terminal also offers to install it.
+2. **`setup-aws-local.ps1`.** Not before step 1.
+3. **AWS Toolkit.** Extensions view, search `AWS Toolkit`, install, restart.
+
+Step 2 must follow step 1. The toolkit installer detects which agents are
+already present on the machine and writes into each one it finds; run it first
+and it reports every agent as not found, installs no skills anywhere useful,
+and configures no MCP server. The output names the agents it wrote to, which is
+the thing to read rather than the exit code.
+
+Agent configuration is user level rather than per project, at
+`~/.claude/skills` and `~/.claude.json` (`%USERPROFILE%` on Windows), and is
+shared between the CLI and the editor extension. Running the setup script once
+covers both.
+
+### Pointing the Toolkit at the right credentials
+
+Set the Toolkit's region to `eu-central-1` after connecting. It does not
+inherit the CLI default.
+
+**The Toolkit cannot use an `aws login` profile.** Every profile reports
+session expired and no authentication is attempted. The status bar is
+misleading here: the Toolkit lists profile *names* out of the shared config,
+so `default` appears there and looks connected, while `login_session` is not
+among the credential types it actually resolves. Its documented methods are
+IAM Identity Center, IAM credentials, AWS Builder ID, and an external
+credential process.
+
+The external credential process is the way through, and the AWS CLI can serve
+as its own provider. Write the path to `aws` in full:
+
+```ini
+[profile vscode]
+credential_process = "C:\Program Files\Amazon\AWSCLIV2\aws.exe" configure export-credentials --profile default --format process
+region = eu-central-1
+```
+
+Select `vscode` in the Toolkit. `export-credentials` reads the login session
+and emits the `credential_process` contract, short term `ASIA` credentials
+carrying a session token and an expiry, which the Toolkit does understand. It
+is re-run whenever credentials are needed, so a session renewed with
+`aws login` is picked up without touching this profile again.
+
+**The absolute path is required, not a fallback.** Written as bare `aws` the
+profile works perfectly from a terminal and fails inside the Toolkit, which
+reports the same "Unable to authenticate connection" as a profile with no
+credentials at all. The extension host spawns the process without a shell and
+does not inherit the PATH your terminal has. Because `aws sts
+get-caller-identity --profile vscode` passes either way, that check cannot
+tell the two apart, and the identical symptom makes this look like the
+Toolkit rejecting `credential_process` outright when it is only failing to
+launch the command. Confirm the path with `(Get-Command aws).Source` and quote
+it, since it contains a space.
+
+Two smaller traps. The profile must not be named `default`, because a profile
+whose `credential_process` exports that same profile recurses. And VS Code
+must be fully quit and reopened after editing the config: the connection list
+survives a window reload, so a corrected profile can still show as expired.
+
+For reference, `aws login` caches short term credentials under
+`~/.aws/login/cache` (`%USERPROFILE%\.aws\login\cache` on Windows) and marks
+the profile with `login_session`. The credentials last 15 minutes and refresh
+automatically for up to 12 hours.
+
+IAM Identity Center remains the better end state, and the Toolkit supports it
+natively with no shim at all — see "What still is not closed" below. An IAM
+access key would also work and should still be the last resort, since a
+standing `AKIA` credential is what `agent-session-role.yaml` exists to remove.
 
 agent-session-role.yaml
 -----------------------
