@@ -8,8 +8,8 @@ Region
 ------
 
 `eu-central-1` is the primary Region for this account. The stacks here, the
-resources they manage, and the Identity Center identity store all live there,
-and it is the default the setup scripts write into the shared config.
+resources they manage, and the default the setup scripts write into the shared
+config are all `eu-central-1`.
 
 Pass it explicitly on every `aws cloudformation` call. IAM is global and
 Identity Center is reached per instance, but the stacks that own those
@@ -17,9 +17,17 @@ resources are regional, so deploying into the wrong Region creates a second
 stack rather than updating the first. `agent-session-role.yaml` below spells
 out what that failure looks like, because it is confusing when it happens.
 
-There is exactly one deliberate exception. The Agent Toolkit control plane
-resolves only in `us-east-1`, so `aws configure agent-toolkit` and
-`aws agent-toolkit` take `--region us-east-1` whatever the primary Region is.
+Two things sit in `us-east-1` deliberately, and neither is a mistake to
+correct:
+
+- The Agent Toolkit control plane resolves nowhere else, so
+  `aws configure agent-toolkit` and `aws agent-toolkit` always take
+  `--region us-east-1`.
+- The Identity Center instance was enabled there. Its Region is fixed for the
+  life of the instance and can only be changed by deleting and recreating it,
+  so anything addressing that instance, including the `identity-center` stack,
+  uses `us-east-1` too. See `identity-center.yaml` below.
+
 Nothing else here should name another Region.
 
 setup-aws-local.sh / setup-aws-local.ps1
@@ -352,14 +360,22 @@ So the split is: enable by hand once, then keep every grant in git.
 
 ### 1. Enable Identity Center
 
-In the console, as a user holding administrative access, in `eu-central-1`.
-Choose the organization instance, which creates an AWS Organization with this
-account as the management account.
+Already done. An organization instance exists in `us-east-1`, enabled in
+August 2026, using the default Identity Center directory. The account is the
+management account of its organization.
 
-Two choices here are effectively permanent. The Region is fixed per instance,
-and moving it means deleting the instance and recreating it. Organization
-instance against account instance is likewise not a switch you flip later. AWS
-recommends the organization instance for everything except proofs of concept.
+The Region is the surprising part, since everything else here is
+`eu-central-1`. It stays as it is on purpose. A Region is fixed for the life
+of an instance, and switching means deleting the instance and recreating
+users, groups, permission sets, applications and assignments, which also
+changes the access portal URL. Replicating to an additional Region does not
+help, because replication adds a Region without moving the primary one. Since
+the instance grants access to the whole account regardless of where it runs,
+the only thing gained by moving would be holding identity data in the EU, and
+that did not justify a teardown here.
+
+Read the instance ARN and identity store id from the Identity Center console
+under Settings.
 
 ### 2. Create a group and a user
 
@@ -371,10 +387,10 @@ stack update.
 ### 3. Collect the two identifiers
 
 ```sh
-aws sso-admin list-instances --region eu-central-1
+aws sso-admin list-instances --region us-east-1
 aws identitystore list-groups \
   --identity-store-id <IdentityStoreId from the call above> \
-  --region eu-central-1
+  --region us-east-1
 ```
 
 The first gives `InstanceArn` and `IdentityStoreId`, the second the group's
@@ -387,14 +403,15 @@ GUID, unrelated to any IAM user name.
 aws cloudformation deploy \
   --template-file infra/identity-center.yaml \
   --stack-name identity-center \
-  --region eu-central-1 \
+  --region us-east-1 \
   --parameter-overrides \
       InstanceArn=arn:aws:sso:::instance/ssoins-0123456789abcdef \
       PrincipalId=00000000-0000-0000-0000-000000000000
 ```
 
-Pass `--region eu-central-1`, for the same reason `agent-session-role` needs
-it: the stack must live in the Region the instance was enabled in.
+Pass `--region us-east-1`, not the primary Region. The stack has to live in
+the Region its Identity Center instance was enabled in, and this is the one
+stack here where that is not `eu-central-1`.
 
 ### 5. Point the CLI at it
 
@@ -402,10 +419,16 @@ it: the stack must live in the Region the instance was enabled in.
 aws configure sso
 ```
 
-It asks for the start URL, which the Identity Center console shows as
-`https://d-xxxxxxxxxx.awsapps.com/start`, then the Region, then which account
-and permission set to use. The permission set name is `AdministratorAccess`,
-the `PermissionSetName` output of the stack.
+It asks for the start URL, which the Identity Center console shows under
+Settings as `https://d-xxxxxxxxxx.awsapps.com/start`, then for a Region, then
+for the account and permission set. The permission set name is
+`AdministratorAccess`, the `PermissionSetName` output of the stack.
+
+It asks for a Region twice, and here the two answers differ. The SSO session
+Region is where the instance lives, `us-east-1`. The profile's own default
+Region is where you work, `eu-central-1`. Answering `eu-central-1` to the
+first fails to find the instance, and answering `us-east-1` to the second
+quietly points every later command at the wrong Region.
 
 ### 6. Point VS Code at it
 
