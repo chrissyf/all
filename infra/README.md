@@ -1,8 +1,77 @@
 infra
 =====
 
-CloudFormation for account level pieces that support development in this
-repository.
+Account level pieces that support development in this repository: the
+CloudFormation below, and the developer machine setup scripts.
+
+setup-aws-local.sh / setup-aws-local.ps1
+----------------------------------------
+
+Sets up the [Agent Toolkit for AWS](https://github.com/aws/agent-toolkit-for-aws)
+on a developer machine: installs the AWS CLI v2, signs in with `aws login`,
+installs the toolkit (the AWS skills plus the `aws-mcp` server), and writes the
+AWS rules file into a project that does not already carry one.
+
+```sh
+infra/setup-aws-local.sh                 # macOS, Linux, or WSL
+```
+
+```powershell
+.\infra\setup-aws-local.ps1              # Windows, from PowerShell
+```
+
+Both default to `eu-central-1` and take the region as an argument. Both are
+idempotent: a valid session is not thrown away, and an existing `CLAUDE.md`
+that differs from upstream is reported rather than overwritten.
+
+### PowerShell or bash on Windows
+
+Use PowerShell. The toolkit writes skills to `~/.claude/skills` and the MCP
+server entry to `~/.claude.json`, and those have to land in the same home
+directory the coding agent reads from. Installing under WSL while the agent
+runs on Windows produces a clean install in a home directory the agent never
+looks at.
+
+`aws login` also opens a browser. From PowerShell that is the normal Windows
+browser; from WSL it usually prints a localhost URL that resolves inside the
+WSL network namespace and cannot complete.
+
+Run the `.sh` script under WSL only when the agent itself runs under WSL.
+
+### us-east-1 is not a mistake
+
+Step 4 of both scripts passes `--region us-east-1` while everything else uses
+your region. The Agent Toolkit control plane is only reachable there. Swapping
+it for `eu-central-1` fails to resolve the endpoint.
+
+### uv is a real dependency
+
+The `aws-mcp` server is launched as `uvx mcp-proxy-for-aws@latest`. Without
+[uv](https://docs.astral.sh/uv/) on PATH the server entry is written to
+`~/.claude.json` but never starts, and the failure is quiet. Both scripts warn
+when `uvx` is missing rather than failing, since the skills install regardless.
+
+### Headless machines
+
+`aws login` opens a browser and waits on a loopback callback. Over SSH, or in a
+container, that callback is unreachable from the browser you would use. Pass
+`--remote` for the cross device flow, which prints a URL and reads back an
+authorization code:
+
+```sh
+aws login --region eu-central-1 --remote
+```
+
+The code is bound to the PKCE verifier held by that specific process, so the
+command has to stay running while you complete sign in. Backgrounding it and
+returning later invalidates the code.
+
+### Placeholder credentials in agent containers
+
+Some agent environments inject `AWS_ACCESS_KEY_ID=proxy-injected` and a
+matching secret. Environment credentials outrank the profile, so `aws login`
+reports success while every subsequent call fails with `InvalidClientTokenId`.
+Unset both; leave `AWS_CA_BUNDLE` alone, since the proxy needs it.
 
 agent-session-role.yaml
 -----------------------
