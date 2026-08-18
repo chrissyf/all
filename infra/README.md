@@ -73,6 +73,60 @@ matching secret. Environment credentials outrank the profile, so `aws login`
 reports success while every subsequent call fails with `InvalidClientTokenId`.
 Unset both; leave `AWS_CA_BUNDLE` alone, since the proxy needs it.
 
+Visual Studio Code
+------------------
+
+Two extensions are worth having alongside the setup script: Claude Code, and
+the AWS Toolkit.
+
+### Install in this order
+
+1. **Claude Code.** Extensions view, search `Claude Code`, install. Running
+   `claude` in the integrated terminal also offers to install it.
+2. **`setup-aws-local.ps1`.** Not before step 1.
+3. **AWS Toolkit.** Extensions view, search `AWS Toolkit`, install, restart.
+
+Step 2 must follow step 1. The toolkit installer detects which agents are
+already present on the machine and writes into each one it finds; run it first
+and it reports every agent as not found, installs no skills anywhere useful,
+and configures no MCP server. The output names the agents it wrote to, which is
+the thing to read rather than the exit code.
+
+Agent configuration is user level rather than per project, at
+`~/.claude/skills` and `~/.claude.json` (`%USERPROFILE%` on Windows), and is
+shared between the CLI and the editor extension. Running the setup script once
+covers both.
+
+### Pointing the Toolkit at the right credentials
+
+Set the Toolkit's region to `eu-central-1` after connecting. It does not
+inherit the CLI default.
+
+**Whether the Toolkit reads an `aws login` profile is unconfirmed.** Its
+documented authentication methods are IAM Identity Center, IAM credentials,
+AWS Builder ID, and an external credential process. `login_session`, which is
+what `aws login` writes, is not among them. AWS documents the login credential
+provider as working with the AWS CLI, AWS Tools for PowerShell and the AWS
+SDKs given current SDK versions, and the Toolkit is an SDK consumer, but no
+documentation states that the version it bundles is new enough. Try it and see.
+
+For reference, `aws login` caches short term credentials under
+`~/.aws/login/cache` (`%USERPROFILE%\.aws\login\cache` on Windows) and marks
+the profile with `login_session`. The credentials themselves last 15 minutes
+and are refreshed automatically for up to 12 hours, so an expiry seen in the
+Toolkit is not necessarily a misconfiguration.
+
+If the profile does not work there, in order of preference:
+
+1. **IAM Identity Center.** Fully supported by the Toolkit, and the end state
+   this directory is already moving toward — see "What still is not closed"
+   below.
+2. **`credential_process`.** The documented escape hatch, and the right answer
+   for any credential source the Toolkit does not natively understand.
+3. **An IAM access key.** Works, but reintroduces exactly the standing `AKIA`
+   credential that `agent-session-role.yaml` exists to remove. Prefer either
+   option above it.
+
 agent-session-role.yaml
 -----------------------
 
