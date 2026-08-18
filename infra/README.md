@@ -102,30 +102,43 @@ covers both.
 Set the Toolkit's region to `eu-central-1` after connecting. It does not
 inherit the CLI default.
 
-**Whether the Toolkit reads an `aws login` profile is unconfirmed.** Its
-documented authentication methods are IAM Identity Center, IAM credentials,
-AWS Builder ID, and an external credential process. `login_session`, which is
-what `aws login` writes, is not among them. AWS documents the login credential
-provider as working with the AWS CLI, AWS Tools for PowerShell and the AWS
-SDKs given current SDK versions, and the Toolkit is an SDK consumer, but no
-documentation states that the version it bundles is new enough. Try it and see.
+**The Toolkit cannot use an `aws login` profile.** Every profile reports
+session expired and no authentication is attempted. The status bar is
+misleading here: the Toolkit lists profile *names* out of the shared config,
+so `default` appears there and looks connected, while `login_session` is not
+among the credential types it actually resolves. Its documented methods are
+IAM Identity Center, IAM credentials, AWS Builder ID, and an external
+credential process.
+
+The external credential process is the way through, and the AWS CLI can serve
+as its own provider:
+
+```ini
+[profile vscode]
+credential_process = aws configure export-credentials --profile default --format process
+region = eu-central-1
+```
+
+Select `vscode` in the Toolkit. `export-credentials` reads the login session
+and emits the `credential_process` contract, short term `ASIA` credentials
+carrying a session token and an expiry, which the Toolkit does understand. It
+is re-run whenever credentials are needed, so a session renewed with
+`aws login` is picked up without touching this profile again.
+
+Two things to get right. The profile must not be named `default`, because a
+profile whose `credential_process` exports that same profile recurses. And if
+the Toolkit cannot find `aws` on its PATH, give the full path, on Windows
+usually `C:\Program Files\Amazon\AWSCLIV2\aws.exe`.
 
 For reference, `aws login` caches short term credentials under
 `~/.aws/login/cache` (`%USERPROFILE%\.aws\login\cache` on Windows) and marks
-the profile with `login_session`. The credentials themselves last 15 minutes
-and are refreshed automatically for up to 12 hours, so an expiry seen in the
-Toolkit is not necessarily a misconfiguration.
+the profile with `login_session`. The credentials last 15 minutes and refresh
+automatically for up to 12 hours.
 
-If the profile does not work there, in order of preference:
-
-1. **IAM Identity Center.** Fully supported by the Toolkit, and the end state
-   this directory is already moving toward — see "What still is not closed"
-   below.
-2. **`credential_process`.** The documented escape hatch, and the right answer
-   for any credential source the Toolkit does not natively understand.
-3. **An IAM access key.** Works, but reintroduces exactly the standing `AKIA`
-   credential that `agent-session-role.yaml` exists to remove. Prefer either
-   option above it.
+IAM Identity Center remains the better end state, and the Toolkit supports it
+natively with no shim at all — see "What still is not closed" below. An IAM
+access key would also work and should still be the last resort, since a
+standing `AKIA` credential is what `agent-session-role.yaml` exists to remove.
 
 agent-session-role.yaml
 -----------------------
