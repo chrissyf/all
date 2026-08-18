@@ -4,6 +4,24 @@ infra
 Account level pieces that support development in this repository: the
 CloudFormation below, and the developer machine setup scripts.
 
+Region
+------
+
+`eu-central-1` is the primary Region for this account. The stacks here, the
+resources they manage, and the Identity Center identity store all live there,
+and it is the default the setup scripts write into the shared config.
+
+Pass it explicitly on every `aws cloudformation` call. IAM is global and
+Identity Center is reached per instance, but the stacks that own those
+resources are regional, so deploying into the wrong Region creates a second
+stack rather than updating the first. `agent-session-role.yaml` below spells
+out what that failure looks like, because it is confusing when it happens.
+
+There is exactly one deliberate exception. The Agent Toolkit control plane
+resolves only in `us-east-1`, so `aws configure agent-toolkit` and
+`aws agent-toolkit` take `--region us-east-1` whatever the primary Region is.
+Nothing else here should name another Region.
+
 setup-aws-local.sh / setup-aws-local.ps1
 ----------------------------------------
 
