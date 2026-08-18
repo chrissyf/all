@@ -313,4 +313,100 @@ this template.
 
 The stronger end state is IAM Identity Center, where no permanent key exists at
 all and sessions are established through a browser login. This template is the
-step that does not require that migration first.
+step that does not require that migration first. `identity-center.yaml` below
+is that migration.
+
+identity-center.yaml
+--------------------
+
+Permission sets and account assignments for IAM Identity Center. Deploying it
+is the last step of a longer procedure, most of which cannot be automated.
+
+### What this template does not do
+
+It does not enable Identity Center. AWS documents enabling an organization
+instance as a console action, performed in the Organizations management
+account while signed in as an administrative user or the root user, and no
+CloudFormation resource type creates an instance. `AWS::SSO::PermissionSet`
+and `AWS::SSO::Assignment` operate on an instance that already exists.
+
+So the split is: enable by hand once, then keep every grant in git.
+
+### 1. Enable Identity Center
+
+In the console, as a user holding administrative access, in `eu-central-1`.
+Choose the organization instance, which creates an AWS Organization with this
+account as the management account.
+
+Two choices here are effectively permanent. The Region is fixed per instance,
+and moving it means deleting the instance and recreating it. Organization
+instance against account instance is likewise not a switch you flip later. AWS
+recommends the organization instance for everything except proofs of concept.
+
+### 2. Create a group and a user
+
+In the Identity Center directory, create a group, create your user, and put
+the user in the group. The template assigns access to a group by default so
+that adding or removing an administrator is a directory change rather than a
+stack update.
+
+### 3. Collect the two identifiers
+
+```sh
+aws sso-admin list-instances --region eu-central-1
+aws identitystore list-groups \
+  --identity-store-id <IdentityStoreId from the call above> \
+  --region eu-central-1
+```
+
+The first gives `InstanceArn` and `IdentityStoreId`, the second the group's
+`GroupId`. That GroupId is the `PrincipalId` parameter. It is a directory
+GUID, unrelated to any IAM user name.
+
+### 4. Deploy
+
+```sh
+aws cloudformation deploy \
+  --template-file infra/identity-center.yaml \
+  --stack-name identity-center \
+  --region eu-central-1 \
+  --parameter-overrides \
+      InstanceArn=arn:aws:sso:::instance/ssoins-0123456789abcdef \
+      PrincipalId=00000000-0000-0000-0000-000000000000
+```
+
+Pass `--region eu-central-1`, for the same reason `agent-session-role` needs
+it: the stack must live in the Region the instance was enabled in.
+
+### 5. Point the CLI at it
+
+```sh
+aws configure sso
+```
+
+It asks for the start URL, which the Identity Center console shows as
+`https://d-xxxxxxxxxx.awsapps.com/start`, then the Region, then which account
+and permission set to use. The permission set name is `AdministratorAccess`,
+the `PermissionSetName` output of the stack.
+
+### 6. Point VS Code at it
+
+The AWS Toolkit supports IAM Identity Center natively. Add the connection
+through the Toolkit rather than through a profile, and the
+`credential_process` shim described under "Visual Studio Code" above becomes
+unnecessary. Delete the `vscode` profile once the SSO connection works, so
+there is one credential path rather than two.
+
+### What this closes, and what it does not
+
+It removes the standing key as a *requirement*: administrative access now
+comes from a browser login that expires. It does not delete anything on its
+own. The IAM users and any keys they still hold remain until they are removed
+by hand, and until then they are an alternative path to the same access. That
+removal is deliberately not in this template, for the same reason the detach
+in `agent-session-role.yaml` is manual: it is the step that actually takes
+privilege away, and it should fail loudly rather than as a side effect of a
+stack update.
+
+Verify the new path works before removing the old one. The recovery route if
+both are broken is the account root user, which none of this affects.

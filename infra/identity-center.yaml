@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >-
+  IAM Identity Center permission sets and account assignments. The Identity
+  Center instance itself is not created here: enabling it is a console action
+  in the Organizations management account, and no CloudFormation resource
+  creates an instance. Deploy this once the instance exists.
+
+Parameters:
+  InstanceArn:
+    Type: String
+    Description: >-
+      ARN of the Identity Center instance. Read it from
+      'aws sso-admin list-instances --region eu-central-1' after enabling
+      Identity Center in the console.
+    AllowedPattern: "^arn:aws:sso:::instance/[A-Za-z0-9-]+$"
+    ConstraintDescription: >-
+      Must look like arn:aws:sso:::instance/ssoins-0123456789abcdef
+
+  PrincipalId:
+    Type: String
+    Description: >-
+      Identity Center id of the group or user that receives administrator
+      access, from 'aws identitystore list-groups' or 'list-users'. This is a
+      GUID issued by the identity store, not an IAM user name.
+    AllowedPattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    ConstraintDescription: Must be an identity store GUID.
+
+  PrincipalType:
+    Type: String
+    Description: >-
+      Whether PrincipalId names a group or a single user. Prefer GROUP, so that
+      adding or removing an administrator is a directory change rather than a
+      stack update.
+    Default: GROUP
+    AllowedValues:
+      - GROUP
+      - USER
+
+  SessionDuration:
+    Type: String
+    Description: >-
+      How long a console or CLI session lasts before it must be renewed, as an
+      ISO 8601 duration. PT4H is four hours.
+    Default: PT4H
+    AllowedPattern: "^PT([0-9]+H)?([0-9]+M)?$"
+    ConstraintDescription: Must be an ISO 8601 duration such as PT4H or PT30M.
+
+Resources:
+  # AdministratorAccess is kept deliberately, for the same reason
+  # agent-session-role.yaml keeps it: the goal is to remove the standing
+  # credential, not to narrow what a session can do. Narrowing comes later,
+  # once there is a record of which API calls are actually made. Additional
+  # permission sets belong here rather than in the console, so that access
+  # stays reviewable in git.
+  AdministratorPermissionSet:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      Name: AdministratorAccess
+      Description: >-
+        Full administrative access, obtained through a browser login rather
+        than a standing IAM access key.
+      InstanceArn: !Ref InstanceArn
+      ManagedPolicies:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      SessionDuration: !Ref SessionDuration
+
+  AdministratorAssignment:
+    Type: AWS::SSO::Assignment
+    Properties:
+      InstanceArn: !Ref InstanceArn
+      PermissionSetArn: !GetAtt AdministratorPermissionSet.PermissionSetArn
+      PrincipalId: !Ref PrincipalId
+      PrincipalType: !Ref PrincipalType
+      # This stack grants access to the account it is deployed into. Granting
+      # into other accounts means one Assignment per account, deployed from
+      # the management account.
+      TargetId: !Ref AWS::AccountId
+      TargetType: AWS_ACCOUNT
+
+Outputs:
+  PermissionSetArn:
+    Description: ARN of the administrator permission set.
+    Value: !GetAtt AdministratorPermissionSet.PermissionSetArn
+
+  PermissionSetName:
+    Description: >-
+      Name shown in the access portal and used as the CLI sso_role_name.
+    Value: AdministratorAccess
+
+  AssignedAccountId:
+    Description: Account this stack granted access to.
+    Value: !Ref AWS::AccountId
