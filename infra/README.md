@@ -111,11 +111,11 @@ IAM Identity Center, IAM credentials, AWS Builder ID, and an external
 credential process.
 
 The external credential process is the way through, and the AWS CLI can serve
-as its own provider:
+as its own provider. Write the path to `aws` in full:
 
 ```ini
 [profile vscode]
-credential_process = aws configure export-credentials --profile default --format process
+credential_process = "C:\Program Files\Amazon\AWSCLIV2\aws.exe" configure export-credentials --profile default --format process
 region = eu-central-1
 ```
 
@@ -125,10 +125,21 @@ carrying a session token and an expiry, which the Toolkit does understand. It
 is re-run whenever credentials are needed, so a session renewed with
 `aws login` is picked up without touching this profile again.
 
-Two things to get right. The profile must not be named `default`, because a
-profile whose `credential_process` exports that same profile recurses. And if
-the Toolkit cannot find `aws` on its PATH, give the full path, on Windows
-usually `C:\Program Files\Amazon\AWSCLIV2\aws.exe`.
+**The absolute path is required, not a fallback.** Written as bare `aws` the
+profile works perfectly from a terminal and fails inside the Toolkit, which
+reports the same "Unable to authenticate connection" as a profile with no
+credentials at all. The extension host spawns the process without a shell and
+does not inherit the PATH your terminal has. Because `aws sts
+get-caller-identity --profile vscode` passes either way, that check cannot
+tell the two apart, and the identical symptom makes this look like the
+Toolkit rejecting `credential_process` outright when it is only failing to
+launch the command. Confirm the path with `(Get-Command aws).Source` and quote
+it, since it contains a space.
+
+Two smaller traps. The profile must not be named `default`, because a profile
+whose `credential_process` exports that same profile recurses. And VS Code
+must be fully quit and reopened after editing the config: the connection list
+survives a window reload, so a corrected profile can still show as expired.
 
 For reference, `aws login` caches short term credentials under
 `~/.aws/login/cache` (`%USERPROFILE%\.aws\login\cache` on Windows) and marks
