@@ -38,6 +38,28 @@ WSL network namespace and cannot complete.
 
 Run the `.sh` script under WSL only when the agent itself runs under WSL.
 
+### winget can be installed and still missing
+
+The Windows script warns when `winget` is not callable. Nothing it installs
+comes from winget, the AWS CLI is fetched straight from `awscli.amazonaws.com`,
+so this reports on the machine rather than on a missing dependency and the
+script carries on either way.
+
+It earns a line of output because the usual cause is not a missing install.
+`winget` ships inside the App Installer package and is reached through an app
+execution alias, and that alias is per user and survives reinstalls. Switched
+off, the package is still listed, every reinstall reports success, and the
+command stays gone. Turn it back on under Settings > Apps > Advanced app
+settings > App execution aliases, or re-register the package:
+
+```powershell
+Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
+```
+
+When the package really is absent, install App Installer from the Microsoft
+Store or from <https://aka.ms/getwinget>. Windows Server 2019 has neither and
+does not support winget at all.
+
 ### us-east-1 is not a mistake
 
 Step 4 of both scripts passes `--region us-east-1` while everything else uses
