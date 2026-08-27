@@ -14,6 +14,11 @@
 
 set -euo pipefail
 
+# A pager is never wanted in a setup script. The AWS CLI v2 pipes output
+# through one, and a pager that fails to start, or waits for a keypress,
+# costs the output of a step that exists to print it.
+export AWS_PAGER=''
+
 REGION="${1:-${AWS_SETUP_REGION:-eu-central-1}}"
 
 # The Agent Toolkit control plane is only reachable in us-east-1. This is not

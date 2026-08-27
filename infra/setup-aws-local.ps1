@@ -21,6 +21,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# A pager is never wanted in a setup script. The AWS CLI v2 pipes output
+# through one, and on Windows that is `more`; when the spawn fails the output
+# vanishes while aws still exits 0, so a step that verifies by printing
+# reports success having shown nothing.
+$env:AWS_PAGER = ''
+
 # The Agent Toolkit control plane is only reachable in us-east-1. This is not
 # the region your resources live in, and it must not be swapped for $Region.
 $ToolkitRegion = 'us-east-1'
