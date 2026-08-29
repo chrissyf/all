@@ -508,6 +508,80 @@ Neither control is in this template. The `Deny` variant is a small addition;
 the SCP route is now a matter of writing one rather than of restructuring the
 account first.
 
+cloudtrail.yaml
+---------------
+
+Creates `account-audit`, a multi region CloudTrail trail, and the S3 bucket it
+writes to.
+
+### Why
+
+CloudTrail event history is on by default and needs no setup, which makes it
+easy to assume the account is covered. It retains 90 days, cannot be exported,
+and cannot be extended. Every access review this repository describes was run
+against that window, and nothing outside it is recoverable.
+
+The trail is multi region deliberately. Global service events, IAM and
+Organizations among them, are delivered only to a multi region trail. A trail
+confined to `eu-central-1` would miss precisely the IAM activity this account
+cares about, while appearing to work.
+
+Log file validation is enabled, so CloudTrail writes a digest chain alongside
+the logs and after the fact deletion or modification becomes detectable rather
+than silent.
+
+### Deploy
+
+```sh
+aws cloudformation deploy \
+  --template-file infra/cloudtrail.yaml \
+  --stack-name cloudtrail-audit \
+  --region eu-central-1
+```
+
+No `CAPABILITY_NAMED_IAM`; the stack creates no IAM resources. The bucket is
+named from the stack name, account and region, so it needs no parameter and does
+not collide.
+
+### Verify
+
+```sh
+aws cloudtrail get-trail-status --name account-audit --region eu-central-1
+```
+
+`IsLogging` should be true. `LatestDeliveryTime` stays empty until the first
+delivery, which can take roughly 15 minutes after creation; an empty value
+shortly after deploying is not a fault. `LatestDeliveryError` is the field to
+read if logs never appear, and usually points at the bucket policy.
+
+To check the chain has not been tampered with:
+
+```sh
+aws cloudtrail validate-logs \
+  --trail-arn arn:aws:cloudtrail:eu-central-1:<account-id>:trail/account-audit \
+  --start-time <iso8601> --region eu-central-1
+```
+
+### Notes
+
+The bucket carries `DeletionPolicy: Retain`. An audit log that disappears with
+the stack that made it is not an audit log, so deleting the stack leaves the
+history and the bucket behind, to be removed deliberately if ever wanted.
+
+Objects move to `STANDARD_IA` after 30 days and expire after 365. Shortening
+`RetentionDays` shortens how far back tampering can be proven, since the digest
+chain ages out with the logs it covers.
+
+Encryption is SSE-S3. SSE-KMS would add a customer managed key, and with it a
+key policy that CloudTrail must be granted use of, which is a second way for log
+delivery to fail silently. That tradeoff is worth revisiting if the logs ever
+need to be readable only by a subset of principals.
+
+This is an account trail, not an organization trail, because the organization
+currently contains one account. If member accounts are added, `IsOrganizationTrail`
+plus trusted access for CloudTrail in Organizations covers them all from here,
+and is a smaller change than a trail per account.
+
 IAM Identity Center
 -------------------
 

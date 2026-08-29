@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >-
+  Durable CloudTrail audit log for the account. The built in CloudTrail event
+  history is always on but retains only 90 days, cannot be exported, and cannot
+  be extended. This trail writes management events to S3 with log file
+  validation, so there is a tamper evident record that outlives that window.
+
+Parameters:
+  TrailName:
+    Type: String
+    Default: account-audit
+    Description: Name of the trail.
+
+  RetentionDays:
+    Type: Number
+    Default: 365
+    MinValue: 7
+    MaxValue: 3650
+    Description: >-
+      Days to keep log objects before expiry. Log file validation digests age
+      out on the same schedule, so shortening this shortens how far back
+      tampering can be proven.
+
+  TransitionToInfrequentAccessDays:
+    Type: Number
+    Default: 30
+    MinValue: 30
+    Description: >-
+      Days before log objects move to STANDARD_IA. S3 bills a minimum of 30 days
+      in that class, so values below 30 are rejected by S3 rather than saving
+      anything.
+
+Resources:
+  # Retained on stack deletion deliberately. An audit log that disappears with
+  # the stack that created it is not an audit log, and deleting the trail is not
+  # a reason to destroy the history it already captured.
+  TrailBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-logs
+            Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: !Ref TransitionToInfrequentAccessDays
+            ExpirationInDays: !Ref RetentionDays
+            NoncurrentVersionExpirationInDays: 30
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: purpose
+          Value: cloudtrail-audit
+
+  # The trail ARN is composed with Sub rather than GetAtt on the trail itself.
+  # Referencing the trail here would create a cycle, because the trail cannot be
+  # created until this policy already grants it write access. The ARN format is
+  # deterministic, so composing it breaks the cycle without weakening the
+  # aws:SourceArn condition.
+  TrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TrailBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt TrailBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${TrailName}"
+
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${TrailBucket.Arn}/AWSLogs/${AWS::AccountId}/*"
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${TrailName}"
+
+          # Log delivery is the only writer that should ever reach this bucket,
+          # and nothing should reach it unencrypted in transit.
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt TrailBucket.Arn
+              - !Sub "${TrailBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  Trail:
+    Type: AWS::CloudTrail::Trail
+    # CloudTrail verifies it can write to the bucket at creation time, so the
+    # policy must already exist. Without this the stack fails with
+    # InsufficientS3BucketPolicyException on a race CloudFormation cannot infer.
+    DependsOn: TrailBucketPolicy
+    Properties:
+      TrailName: !Ref TrailName
+      S3BucketName: !Ref TrailBucket
+      IsLogging: true
+      # Global service events, IAM and Organizations among them, are recorded
+      # only by a multi region trail. A single region trail in eu-central-1 would
+      # miss exactly the IAM activity this account cares most about.
+      IsMultiRegionTrail: true
+      IncludeGlobalServiceEvents: true
+      # Writes a digest chain that makes deletion or modification of a log file
+      # detectable after the fact.
+      EnableLogFileValidation: true
+      Tags:
+        - Key: purpose
+          Value: cloudtrail-audit
+
+Outputs:
+  TrailArn:
+    Description: ARN of the trail.
+    Value: !GetAtt Trail.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-TrailArn"
+
+  BucketName:
+    Description: Bucket holding the log objects.
+    Value: !Ref TrailBucket
+
+  ValidateCommand:
+    Description: >-
+      Verifies the digest chain over a time range, proving no log file was
+      altered or removed.
+    Value: !Sub >-
+      aws cloudtrail validate-logs --trail-arn ${Trail.Arn}
+      --start-time <iso8601> --region ${AWS::Region}
