@@ -4,6 +4,32 @@ infra
 Account level pieces that support development in this repository: the
 CloudFormation below, and the developer machine setup scripts.
 
+Region
+------
+
+`eu-central-1` is the primary Region for this account. The stacks here, the
+resources they manage, and the default the setup scripts write into the shared
+config are all `eu-central-1`.
+
+Pass it explicitly on every `aws cloudformation` call. IAM is global and
+Identity Center is reached per instance, but the stacks that own those
+resources are regional, so deploying into the wrong Region creates a second
+stack rather than updating the first. `agent-session-role.yaml` below spells
+out what that failure looks like, because it is confusing when it happens.
+
+Two things sit in `us-east-1` deliberately, and neither is a mistake to
+correct:
+
+- The Agent Toolkit control plane resolves nowhere else, so
+  `aws configure agent-toolkit` and `aws agent-toolkit` always take
+  `--region us-east-1`.
+- The Identity Center instance was enabled there. Its Region is fixed for the
+  life of the instance and can only be changed by deleting and recreating it,
+  so anything addressing that instance, including the `identity-center` stack,
+  uses `us-east-1` too. See `identity-center.yaml` below.
+
+Nothing else here should name another Region.
+
 setup-aws-local.sh / setup-aws-local.ps1
 ----------------------------------------
 
@@ -323,45 +349,6 @@ If the user is somehow left with no working administrative path, the account
 root user is the recovery route. Root is unaffected by any of this, because
 these are IAM user permissions and root is not an IAM user.
 
-### Moving the entry point between users
-
-The role trusts `TrustedUserName`, and optionally a second user named by
-`AdditionalTrustedUserName`. The second exists so the entry point can change
-hands without a gap in which nobody can elevate. Trust both, verify the new
-user, then drop the old one.
-
-```sh
-# 1. Trust both. The new user gains the assume grant, the old one keeps it.
-aws cloudformation deploy \
-  --template-file infra/agent-session-role.yaml \
-  --stack-name agent-session-role \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region eu-central-1 \
-  --parameter-overrides TrustedUserName=christian AdditionalTrustedUserName=christianAdmin
-
-# 2. Verify, signed in as the new user.
-aws sts assume-role \
-  --role-arn "arn:aws:iam::<account-id>:role/agent-session-admin" \
-  --role-session-name preflight --query 'AssumedRoleUser.Arn'
-
-# 3. Drop the old one.
-aws cloudformation deploy \
-  --template-file infra/agent-session-role.yaml \
-  --stack-name agent-session-role \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region eu-central-1 \
-  --parameter-overrides TrustedUserName=christian AdditionalTrustedUserName=""
-```
-
-Step 3 is what actually retires the old user: it removes that user from the
-trust policy and from `agent-session-assume-only`. If that user also carries
-the boundary, those two were the whole of its access, so it is left inert.
-Revoking its keys and console password is a separate step, and deleting the
-user should wait until the new path has carried real work.
-
-Do not run step 3 before step 2 passes. Between the two both users can elevate,
-which is the point: there is no moment where nobody can.
-
 ### After the swap
 
 Console work needs a role switch rather than a direct sign in. The stack output
@@ -399,6 +386,38 @@ entry point invites the opposite habit.
 `TrustedUserName` is that identity; `AdditionalTrustedUserName` exists so the
 switch can happen without a gap. Trust both, confirm the new one works, then
 empty the second parameter.
+
+```sh
+# 1. Trust both. The new user gains the assume grant, the old one keeps it.
+aws cloudformation deploy \
+  --template-file infra/agent-session-role.yaml \
+  --stack-name agent-session-role \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region eu-central-1 \
+  --parameter-overrides TrustedUserName=christian AdditionalTrustedUserName=christianAdmin
+
+# 2. Verify, signed in as the new user.
+aws sts assume-role \
+  --role-arn "arn:aws:iam::<account-id>:role/agent-session-admin" \
+  --role-session-name preflight --query 'AssumedRoleUser.Arn'
+
+# 3. Drop the old one.
+aws cloudformation deploy \
+  --template-file infra/agent-session-role.yaml \
+  --stack-name agent-session-role \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region eu-central-1 \
+  --parameter-overrides TrustedUserName=christian AdditionalTrustedUserName=""
+```
+
+Emptying the second parameter is what actually retires the old user: it removes
+that user from the trust policy and from `agent-session-assume-only`. If the
+user also carries the boundary, those two were the whole of its access, so it
+is left inert. Revoking its keys and console password is a separate step, and
+deleting the user should wait until the new path has carried real work.
+
+Do not empty it before the verification passes. In between, both users can
+elevate, which is the point: there is no moment where nobody can.
 
 **Renaming the entry point does not by itself reduce anything.** Whatever the
 new user already has, it keeps. If it holds `AdministratorAccess` directly, the
@@ -612,6 +631,169 @@ you got, and only an organization instance supports the permission sets this
 would need. Confirm the type before depending on it, by listing permission sets
 against the instance: an account instance rejects that call.
 
-What remains is the permission sets and account assignments themselves. Until
-those exist, the role plus boundary arrangement in this stack is what removes
-the standing credential.
+The permission sets and account assignments themselves are
+`identity-center.yaml`, below.
+
+identity-center.yaml
+--------------------
+
+The permission sets and account assignments for IAM Identity Center. Everything
+else Identity Center needs is a precondition rather than a step this template
+performs.
+
+### What it does not do
+
+It does not enable Identity Center. AWS documents enabling an organization
+instance as a console action, performed in the Organizations management
+account while signed in as an administrative user or the root user, and no
+CloudFormation resource type creates an instance. `AWS::SSO::PermissionSet`
+and `AWS::SSO::Assignment` operate on an instance that already exists.
+
+It does not create users or groups either. Those live in the identity store,
+and the template names a group by id.
+
+So the split is: establish the preconditions by hand once, then keep every
+grant in git.
+
+### Preconditions
+
+All four hold on this account. The checks are written out because each one, when
+missing, fails in a way that does not name itself.
+
+**An organization, with this account as its management account.** Permission
+sets and account assignments exist only on an organization instance of Identity
+Center. An account instance, which is what a standalone account can create,
+supports neither, so without an organization this template has nothing to
+deploy against.
+
+```sh
+aws organizations describe-organization
+```
+
+**An organization instance of Identity Center, in `us-east-1`.** The Region is
+the surprising part, since everything else here is `eu-central-1`. It stays as
+it is on purpose. A Region is fixed for the life of an instance, and switching
+means deleting the instance and recreating users, groups, permission sets,
+applications and assignments, which also changes the access portal URL.
+Replicating to an additional Region does not help, because replication adds a
+Region without moving the primary one. Since the instance grants access to the
+whole account regardless of where it runs, the only thing gained by moving
+would be holding identity data in the EU, and that did not justify a teardown.
+
+```sh
+aws sso-admin list-instances --region us-east-1
+```
+
+That gives `InstanceArn` and `IdentityStoreId`. It does not give the instance
+type, and neither does the console: enabling from there tells you nothing about
+which kind you got. Listing permission sets against the instance is the
+confirmation, because an account instance rejects that call.
+
+**A group named for the access it receives.** The template assigns to a group
+by default, so that adding or removing an administrator is a directory change
+rather than a stack update.
+
+Name it `administrators` rather than `developers`. The permission set this
+stack creates is `AdministratorAccess`, so everyone in the group named here is
+a full account administrator. A group named after a job title stops being true
+the first time someone joins it who should not hold admin, and nothing in the
+directory flags that drift.
+
+A user can belong to several groups, so keeping a separate `developers` group
+costs nothing now and is where a narrower permission set goes when there is
+one. That narrowing is the same deferred work `agent-session-role.yaml`
+describes: remove the standing credential first, reduce what a session can do
+once there is a record of what it actually calls.
+
+```sh
+aws identitystore list-groups --identity-store-id d-xxxxxxxxxx --region us-east-1
+```
+
+The group's `GroupId` is the `PrincipalId` parameter. It is a directory id,
+unrelated to any IAM user name, and comes in one of two shapes: a store
+migrated off legacy AWS SSO issues a bare GUID, while a store created new
+prefixes the store id, as `1234567890-` followed by a GUID. Pass whatever
+`list-groups` prints, in full.
+
+**Nothing else already owns the name `AdministratorAccess`.** The stack creates
+a permission set with that name, and if it is taken the create fails with
+`AlreadyExists` and rolls back. A console experiment is the usual cause.
+
+Clearing it is three steps, in order, because a permission set carrying an
+assignment has an application profile and cannot be deleted:
+`delete-account-assignment`, then `delete-permission-set`, then `delete-stack`
+on the `ROLLBACK_COMPLETE` remains.
+
+### Checking preconditions needs an elevated session
+
+Every command above needs `sso:` or `organizations:` permissions that the day
+to day user does not hold. Run unelevated they return `AccessDenied`, which is
+a statement about the caller and not about the account, and it is
+indistinguishable from the thing genuinely being absent.
+
+Confirm which principal you are before believing any answer here:
+
+```sh
+aws sts get-caller-identity
+```
+
+### Deploy
+
+```sh
+aws cloudformation deploy \
+  --template-file infra/identity-center.yaml \
+  --stack-name identity-center \
+  --region us-east-1 \
+  --parameter-overrides \
+      InstanceArn=arn:aws:sso:::instance/ssoins-0123456789abcdef \
+      PrincipalId=00000000-0000-0000-0000-000000000000
+```
+
+Pass `--region us-east-1`, not the primary Region. The stack has to live in
+the Region its Identity Center instance was enabled in, and this is the one
+stack here where that is not `eu-central-1`.
+
+### Pointing the CLI at it
+
+```sh
+aws configure sso
+```
+
+It asks for the start URL, which the Identity Center console shows under
+Settings as `https://d-xxxxxxxxxx.awsapps.com/start`, then for a Region, then
+for the account and permission set. The permission set name is
+`AdministratorAccess`, the `PermissionSetName` output of the stack.
+
+It asks for a Region twice, and the two answers differ. The SSO session Region
+is where the instance lives, `us-east-1`. The profile's own default Region is
+where you work, `eu-central-1`. Answering `eu-central-1` to the first fails to
+find the instance, and answering `us-east-1` to the second quietly points every
+later command at the wrong Region.
+
+A working profile reports an assumed role rather than a user:
+
+```
+arn:aws:sts::<account-id>:assumed-role/AWSReservedSSO_AdministratorAccess_<suffix>/<user>
+```
+
+### Pointing VS Code at it
+
+The AWS Toolkit supports IAM Identity Center natively. Add the connection
+through the Toolkit rather than through a profile, and the `credential_process`
+shim described under "Visual Studio Code" above becomes unnecessary. Delete the
+`vscode` profile once the SSO connection works, so there is one credential path
+rather than two.
+
+### What this closes, and what it does not
+
+It removes the standing key as a *requirement*: administrative access now
+comes from a browser login that expires. It does not delete anything on its
+own. The IAM users and any keys they still hold remain until they are removed
+by hand, and until then they are an alternative path to the same access. That
+removal is deliberately not in this template, for the same reason the detach
+in `agent-session-role.yaml` is manual: it is the step that actually takes
+privilege away, and it should fail loudly rather than as a side effect of a
+stack update.
+
+Verify the new path works before removing the old one. The recovery route if
+both are broken is the account root user, which none of this affects.
