@@ -248,9 +248,13 @@ Taking the user off AdministratorAccess
 --------------------------------------
 
 Creating the role does not by itself remove standing administrative access. As
-long as `christianAdmin` has `AdministratorAccess` attached directly, its access
+long as the trusted user has `AdministratorAccess` attached directly, its access
 key is an admin credential in its own right and the role is only an alternative
 path to the same power.
+
+The trusted user is `christian`, the identity signed in to day to day.
+`christianAdmin` was the original one and is on its way out; "Moving the entry
+point between users" below covers that handover.
 
 The template ships `agent-session-assume-only` as the intended replacement: it
 grants `sts:AssumeRole` on the agent session role, plus management of the
@@ -292,14 +296,14 @@ admin at this point would leave the user with no administrative path at all.
 
 ```sh
 aws iam detach-user-policy \
-  --user-name christianAdmin \
+  --user-name christian \
   --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
 ```
 
 ### 4. Confirm the new shape
 
 ```sh
-aws iam list-attached-user-policies --user-name christianAdmin
+aws iam list-attached-user-policies --user-name christian
 ```
 
 `agent-session-assume-only` should be the only entry. A direct call such as
@@ -311,13 +315,52 @@ the change.
 
 ```sh
 aws iam attach-user-policy \
-  --user-name christianAdmin \
+  --user-name christian \
   --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
 ```
 
 If the user is somehow left with no working administrative path, the account
 root user is the recovery route. Root is unaffected by any of this, because
 these are IAM user permissions and root is not an IAM user.
+
+### Moving the entry point between users
+
+The role trusts `TrustedUserName`, and optionally a second user named by
+`AdditionalTrustedUserName`. The second exists so the entry point can change
+hands without a gap in which nobody can elevate. Trust both, verify the new
+user, then drop the old one.
+
+```sh
+# 1. Trust both. The new user gains the assume grant, the old one keeps it.
+aws cloudformation deploy \
+  --template-file infra/agent-session-role.yaml \
+  --stack-name agent-session-role \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region eu-central-1 \
+  --parameter-overrides TrustedUserName=christian AdditionalTrustedUserName=christianAdmin
+
+# 2. Verify, signed in as the new user.
+aws sts assume-role \
+  --role-arn "arn:aws:iam::<account-id>:role/agent-session-admin" \
+  --role-session-name preflight --query 'AssumedRoleUser.Arn'
+
+# 3. Drop the old one.
+aws cloudformation deploy \
+  --template-file infra/agent-session-role.yaml \
+  --stack-name agent-session-role \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region eu-central-1 \
+  --parameter-overrides TrustedUserName=christian AdditionalTrustedUserName=""
+```
+
+Step 3 is what actually retires the old user: it removes that user from the
+trust policy and from `agent-session-assume-only`. If that user also carries
+the boundary, those two were the whole of its access, so it is left inert.
+Revoking its keys and console password is a separate step, and deleting the
+user should wait until the new path has carried real work.
+
+Do not run step 3 before step 2 passes. Between the two both users can elevate,
+which is the point: there is no moment where nobody can.
 
 ### After the swap
 
@@ -408,11 +451,12 @@ grants nothing by itself, so with it in place reattaching `AdministratorAccess`
 to the user would confer nothing beyond assuming the role and managing its own
 credentials.
 
-Apply it after the swap is complete and verified:
+Apply it after the swap is complete and verified, to a user whose only job is
+to elevate:
 
 ```sh
 aws iam put-user-permissions-boundary \
-  --user-name christianAdmin \
+  --user-name christian \
   --permissions-boundary arn:aws:iam::<account-id>:policy/agent-session-boundary \
   --region eu-central-1
 ```
@@ -420,13 +464,23 @@ aws iam put-user-permissions-boundary \
 Confirm:
 
 ```sh
-aws iam get-user --user-name christianAdmin --query "User.PermissionsBoundary"
+aws iam get-user --user-name christian --query "User.PermissionsBoundary"
 ```
 
-To remove it, `aws iam delete-user-permissions-boundary --user-name
-christianAdmin`. The boundary mirrors `agent-session-assume-only`, so applying
-it changes nothing about what works today. That is the intent: it is a ceiling,
-not a further reduction.
+To remove it, `aws iam delete-user-permissions-boundary --user-name christian`.
+
+**Check what else the user holds before attaching it.** A boundary caps
+everything, not only administrative access. Applied to a user that also carries
+day to day permissions, it leaves those policies attached and ineffective, and
+the resulting `AccessDenied` points at the call rather than at the boundary.
+`christian` currently holds S3 and Lambda policies for ordinary development, so
+the boundary as written would take those away. Either leave that user unbounded
+and let `agent-session-assume-only` carry the intent, or widen the boundary to
+cover what the user is meant to keep.
+
+On a user that holds only `agent-session-assume-only`, the boundary mirrors it
+and applying it changes nothing about what works today. That is the intent: a
+ceiling, not a further reduction.
 
 **Keep the two documents in step.** A boundary narrower than the attached policy
 silently breaks whatever falls outside it. If `agent-session-assume-only` gains
