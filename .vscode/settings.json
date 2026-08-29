@@ -69,6 +69,47 @@
   "dotnet.inlayHints.enableInlayHintsForParameters": true,
   "omnisharp.enableEditorConfigSupport": true,
 
+  // ----------------------------------------------- Robot Framework ---
+  "[robotframework]": {
+    "editor.defaultFormatter": "d-biehl.robotcode",
+    "editor.formatOnSave": true,
+    "editor.rulers": [100],
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true
+  },
+
+  // Robot separates cells by two or more spaces, so a tab must not collapse
+  // to fewer than the four spaces the formatter emits.
+  "robotcode.editor.4SpacesTab": true,
+
+  // RobotCode needs the interpreter that has robotframework, Browser and
+  // RequestsLibrary installed - that is robot/.venv. It takes that from the
+  // Python extension, so point the Python extension at it: uncomment the line
+  // for your platform, or run "Python: Select Interpreter".
+  //
+  // Do not use "robotcode.python" for this. It is deprecated, and RobotCode
+  // hands its value straight to spawn() without expanding ${workspaceFolder},
+  // so a path written that way fails to launch and the extension reports
+  // "Invalid python version for workspace folder". python.defaultInterpreterPath
+  // is resolved by the Python extension and does expand the variable.
+  //
+  // Note this is window-wide: a single-folder window has one active interpreter,
+  // so it applies to the python/ subspace too. Per-folder interpreters need a
+  // multi-root .code-workspace - robot/robot.code-workspace already carries the
+  // robot/ half of this configuration for that reason.
+  // "python.defaultInterpreterPath": "${workspaceFolder}/robot/.venv/bin/python",
+  // "python.defaultInterpreterPath": "${workspaceFolder}/robot/.venv/Scripts/python.exe",
+
+  // Where the Test Explorer looks for suites, and where a run from the editor
+  // writes log.html/report.html - same layout as the command line.
+  "robotcode.robot.paths": ["robot/tests"],
+  "robotcode.robot.outputDir": "robot/results",
+
+  // Lint with the same Robocop configuration the command line uses.
+  "robotcode.robocop.enabled": true,
+  "robotcode.robocop.configFile": "robot/pyproject.toml",
+  "robotcode.analysis.diagnosticMode": "workspace",
+
   // ------------------------------------------------------------ Explorer ---
   "files.exclude": {
     "**/target": true,
@@ -85,12 +126,14 @@
     "**/.mypy_cache": true,
     "**/.pytest_cache": true,
     "**/bin": true,
-    "**/obj": true
+    "**/obj": true,
+    "robot/results": true
   },
   "files.watcherExclude": {
     "**/target/**": true,
     "**/.venv/**": true,
     "**/bin/**": true,
-    "**/obj/**": true
+    "**/obj/**": true,
+    "robot/results/**": true
   }
 }

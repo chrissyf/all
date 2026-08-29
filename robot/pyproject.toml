@@ -1,0 +1,23 @@
+# Configuration for the Robot Framework subspace.
+#
+# There is no package to build here - this file exists so `robocop check` and
+# `robocop format` pick up shared settings instead of relying on CLI flags.
+
+[tool.robocop]
+exclude = [".venv", "results"]
+
+[tool.robocop.lint]
+# Documentation on every keyword and test is the point of the scaffold; keep
+# these on. Line length matches the other subspaces in this repository.
+configure = ["line-too-long.line_length=100"]
+ignore = [
+    # Suite documentation carries the context; a per-file "missing docs" nag on
+    # __init__.robot adds noise without adding information.
+    "missing-doc-suite",
+]
+
+[tool.robocop.format]
+line_length = 100
+# The default autodetects the assignment sign per file, which drifts as files
+# grow. Fix it so `${x} =    Keyword` reads the same everywhere.
+configure = ["NormalizeAssignments.equal_sign_type=space_and_equal_sign"]

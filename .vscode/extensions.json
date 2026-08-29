@@ -11,6 +11,8 @@
     "charliermarsh.ruff",
     // csharp/
     "ms-dotnettools.csharp",
-    "ms-dotnettools.csdevkit"
+    "ms-dotnettools.csdevkit",
+    // robot/
+    "d-biehl.robotcode"
   ]
 }
