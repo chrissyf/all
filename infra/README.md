@@ -406,8 +406,13 @@ aws identitystore list-groups \
 ```
 
 The first gives `InstanceArn` and `IdentityStoreId`, the second the group's
-`GroupId`. That GroupId is the `PrincipalId` parameter. It is a directory
-GUID, unrelated to any IAM user name.
+`GroupId`. That GroupId is the `PrincipalId` parameter, and it is a directory
+id unrelated to any IAM user name.
+
+It comes in one of two shapes. A store migrated off legacy AWS SSO issues a
+bare GUID; a store created new prefixes the store id, as
+`1234567890-<guid>`. This instance is the second kind. Pass whatever
+`list-groups` prints, in full.
 
 ### 4. Deploy
 

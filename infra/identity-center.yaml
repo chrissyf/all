@@ -21,10 +21,18 @@ Parameters:
     Type: String
     Description: >-
       Identity Center id of the group or user that receives administrator
-      access, from 'aws identitystore list-groups' or 'list-users'. This is a
-      GUID issued by the identity store, not an IAM user name.
-    AllowedPattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-    ConstraintDescription: Must be an identity store GUID.
+      access, from 'aws identitystore list-groups' or 'list-users'. This is an
+      id issued by the identity store, not an IAM user name.
+    # The service documents two shapes here, and only one of them is a bare
+    # GUID: a store migrated off legacy AWS SSO issues that, while a store
+    # created new prefixes the store id, as 1234567890-<guid>. A recently
+    # enabled instance has the second kind, so a GUID-only pattern rejects
+    # the id the console and the CLI both hand you. Uppercase hex is
+    # accepted too.
+    AllowedPattern: "^([0-9a-f]{10}-|)[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$"
+    ConstraintDescription: >-
+      Must be an identity store id: a GUID, optionally prefixed with the ten
+      character store id and a hyphen.
 
   PrincipalType:
     Type: String
@@ -43,7 +51,9 @@ Parameters:
       How long a console or CLI session lasts before it must be renewed, as an
       ISO 8601 duration. PT4H is four hours.
     Default: PT4H
-    AllowedPattern: "^PT([0-9]+H)?([0-9]+M)?$"
+    # Both components optional would also accept a bare "PT", which passes
+    # the stack's own validation and then fails at create time.
+    AllowedPattern: "^PT([0-9]+H([0-9]+M)?|[0-9]+M)$"
     ConstraintDescription: Must be an ISO 8601 duration such as PT4H or PT30M.
 
 Resources:
