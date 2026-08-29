@@ -9,9 +9,20 @@ Description: >-
 Parameters:
   TrustedUserName:
     Type: String
+    Default: christian
+    Description: >-
+      Name of the IAM user permitted to assume the agent session role. This is
+      the identity signed in to day to day, held at low privilege and elevating
+      through the role only when it needs to.
+
+  AdditionalTrustedUserName:
+    Type: String
     Default: christianAdmin
     Description: >-
-      Name of the IAM user permitted to assume the agent session role.
+      A second IAM user also permitted to assume the role. Exists so the trusted
+      identity can be changed without a gap: trust both, verify the new one
+      works, then set this to an empty string to drop the old one. Leave empty
+      when only one user should hold the entry point.
 
   RoleName:
     Type: String
@@ -49,6 +60,7 @@ Parameters:
 Conditions:
   MfaRequired: !Equals [!Ref RequireMFA, "true"]
   ManageTrustedUserPolicy: !Equals [!Ref AttachAssumeOnlyPolicy, "true"]
+  HasAdditionalUser: !Not [!Equals [!Ref AdditionalTrustedUserName, ""]]
 
 Resources:
   AgentSessionRole:
@@ -64,7 +76,11 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${TrustedUserName}"
+              AWS: !If
+                - HasAdditionalUser
+                - - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${TrustedUserName}"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${AdditionalTrustedUserName}"
+                - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${TrustedUserName}"
             Action: sts:AssumeRole
             Condition: !If
               - MfaRequired
@@ -91,8 +107,10 @@ Resources:
       Description: >-
         Permits assuming the agent session role and managing the caller's own
         sign in credentials, and nothing else.
-      Users:
-        - !Ref TrustedUserName
+      Users: !If
+        - HasAdditionalUser
+        - [!Ref TrustedUserName, !Ref AdditionalTrustedUserName]
+        - [!Ref TrustedUserName]
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -126,6 +144,74 @@ Resources:
               - iam:ListAccountAliases
             Resource: "*"
 
+          # The AWS CLI's browser based sign in (aws login) exchanges an
+          # authorization code for short lived credentials, and needs these two
+          # actions to do it. AdministratorAccess covered them implicitly, so
+          # removing it broke credential refresh for any profile configured that
+          # way. Granting them here restores that path without restoring admin.
+          - Sid: BrowserSignIn
+            Effect: Allow
+            Action:
+              - signin:AuthorizeOAuth2Access
+              - signin:CreateOAuth2Token
+            Resource: "*"
+
+  # Ceiling on what the trusted user can ever hold, regardless of what is
+  # attached to it later. Detaching AdministratorAccess removes today's standing
+  # privilege but does not stop it being reattached, nor stop a new key on the
+  # user inheriting whatever is attached at the time. A boundary makes the
+  # reduced state durable: effective permissions are the intersection of the
+  # attached policies and this document, so reattaching AdministratorAccess
+  # would grant nothing beyond what is listed here.
+  #
+  # The statements deliberately mirror AgentAssumeOnlyPolicy. A boundary narrower
+  # than the attached policy would break current function, so the two must be
+  # kept in step; a boundary grants nothing on its own.
+  #
+  # Creating this policy has no effect until it is attached with
+  # iam:PutUserPermissionsBoundary. See the README.
+  AgentSessionBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: agent-session-boundary
+      Description: >-
+        Permissions ceiling for the agent session user. Caps the user at
+        assuming the agent session role and managing its own sign in
+        credentials, whatever else may be attached to it.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssumeAgentSessionRole
+            Effect: Allow
+            Action: sts:AssumeRole
+            Resource: !GetAtt AgentSessionRole.Arn
+
+          - Sid: ManageOwnCredentials
+            Effect: Allow
+            Action:
+              - iam:ChangePassword
+              - iam:CreateAccessKey
+              - iam:DeleteAccessKey
+              - iam:GetUser
+              - iam:ListAccessKeys
+              - iam:UpdateAccessKey
+              - iam:ListMFADevices
+            Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${!aws:username}"
+
+          - Sid: ReadAccountContext
+            Effect: Allow
+            Action:
+              - iam:GetAccountPasswordPolicy
+              - iam:ListAccountAliases
+            Resource: "*"
+
+          - Sid: BrowserSignIn
+            Effect: Allow
+            Action:
+              - signin:AuthorizeOAuth2Access
+              - signin:CreateOAuth2Token
+            Resource: "*"
+
 Outputs:
   RoleArn:
     Description: ARN of the agent session role.
@@ -149,3 +235,15 @@ Outputs:
     Description: >-
       Policy intended to replace AdministratorAccess on the trusted user.
     Value: !Ref AgentAssumeOnlyPolicy
+
+  BoundaryPolicyArn:
+    Description: >-
+      Permissions boundary for the trusted user. Inert until attached with
+      iam:PutUserPermissionsBoundary.
+    Value: !Ref AgentSessionBoundary
+
+  SetBoundaryCommand:
+    Description: Command that applies the boundary to the trusted user.
+    Value: !Sub >-
+      aws iam put-user-permissions-boundary --user-name ${TrustedUserName}
+      --permissions-boundary ${AgentSessionBoundary}

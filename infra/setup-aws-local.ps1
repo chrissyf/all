@@ -21,6 +21,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# A pager is never wanted in a setup script. The AWS CLI v2 pipes output
+# through one, and on Windows that is `more`; when the spawn fails the output
+# vanishes while aws still exits 0, so a step that verifies by printing
+# reports success having shown nothing.
+$env:AWS_PAGER = ''
+
 # The Agent Toolkit control plane is only reachable in us-east-1. This is not
 # the region your resources live in, and it must not be swapped for $Region.
 $ToolkitRegion = 'us-east-1'
@@ -58,6 +64,36 @@ try {
 }
 
 Note "PowerShell $($PSVersionTable.PSVersion): ok"
+
+# Nothing below installs through winget, but a machine that cannot reach it is
+# worth one line while prerequisites are already being checked. The client
+# ships inside the App Installer package and is reached only through an app
+# execution alias. That alias is per user and survives reinstalls, so once it
+# is switched off the package is still listed, every reinstall reports success,
+# and the command stays gone.
+if (Have 'winget') {
+    Note 'winget: ok'
+} else {
+    # Probing the package is only interesting once the command is missing.
+    # PowerShell 7 reaches Appx through the Windows PowerShell compatibility
+    # layer, which is not always there; unknown is not a failure.
+    $appInstaller = $null
+    try {
+        $appInstaller = Get-AppxPackage Microsoft.DesktopAppInstaller -ErrorAction Stop 3>$null
+    } catch {
+        $appInstaller = $null
+    }
+
+    if ($appInstaller) {
+        Warn 'WARNING: App Installer is present but winget is not callable.'
+        Warn '         Turn the alias back on under Settings > Apps > Advanced'
+        Warn '         app settings > App execution aliases, or re-register it:'
+        Warn '         Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe'
+    } else {
+        Warn 'WARNING: winget not found. Install App Installer from the Microsoft'
+        Warn '         Store, or from https://aka.ms/getwinget.'
+    }
+}
 
 # ---------------------------------------------------------------------------
 # 1. AWS CLI v2

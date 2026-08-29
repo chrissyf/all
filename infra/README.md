@@ -64,6 +64,28 @@ WSL network namespace and cannot complete.
 
 Run the `.sh` script under WSL only when the agent itself runs under WSL.
 
+### winget can be installed and still missing
+
+The Windows script warns when `winget` is not callable. Nothing it installs
+comes from winget, the AWS CLI is fetched straight from `awscli.amazonaws.com`,
+so this reports on the machine rather than on a missing dependency and the
+script carries on either way.
+
+It earns a line of output because the usual cause is not a missing install.
+`winget` ships inside the App Installer package and is reached through an app
+execution alias, and that alias is per user and survives reinstalls. Switched
+off, the package is still listed, every reinstall reports success, and the
+command stays gone. Turn it back on under Settings > Apps > Advanced app
+settings > App execution aliases, or re-register the package:
+
+```powershell
+Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
+```
+
+When the package really is absent, install App Installer from the Microsoft
+Store or from <https://aka.ms/getwinget>. Windows Server 2019 has neither and
+does not support winget at all.
+
 ### us-east-1 is not a mistake
 
 Step 4 of both scripts passes `--region us-east-1` while everything else uses
@@ -252,9 +274,13 @@ Taking the user off AdministratorAccess
 --------------------------------------
 
 Creating the role does not by itself remove standing administrative access. As
-long as `christianAdmin` has `AdministratorAccess` attached directly, its access
+long as the trusted user has `AdministratorAccess` attached directly, its access
 key is an admin credential in its own right and the role is only an alternative
 path to the same power.
+
+The trusted user is `christian`, the identity signed in to day to day.
+`christianAdmin` was the original one and is on its way out; "Moving the entry
+point between users" below covers that handover.
 
 The template ships `agent-session-assume-only` as the intended replacement: it
 grants `sts:AssumeRole` on the agent session role, plus management of the
@@ -296,14 +322,14 @@ admin at this point would leave the user with no administrative path at all.
 
 ```sh
 aws iam detach-user-policy \
-  --user-name christianAdmin \
+  --user-name christian \
   --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
 ```
 
 ### 4. Confirm the new shape
 
 ```sh
-aws iam list-attached-user-policies --user-name christianAdmin
+aws iam list-attached-user-policies --user-name christian
 ```
 
 `agent-session-assume-only` should be the only entry. A direct call such as
@@ -315,7 +341,7 @@ the change.
 
 ```sh
 aws iam attach-user-policy \
-  --user-name christianAdmin \
+  --user-name christian \
   --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
 ```
 
@@ -329,18 +355,210 @@ Console work needs a role switch rather than a direct sign in. The stack output
 `ConsoleSwitchRoleUrl` is the link. For the CLI, the `[profile agent]` block
 above refreshes sessions automatically.
 
-What still is not closed
-------------------------
+### If the profile uses `aws login`
 
-Nothing prevents a new access key being minted on the user, since
-`agent-session-assume-only` permits self service key management by design. A
-permissions boundary or an SCP is the durable control there, and neither is in
-this template.
+The CLI's browser based sign in needs `signin:AuthorizeOAuth2Access` and
+`signin:CreateOAuth2Token`. `AdministratorAccess` covered those implicitly, so
+detaching it breaks credential refresh for a profile configured that way, with
 
-The stronger end state is IAM Identity Center, where no permanent key exists at
-all and sessions are established through a browser login. This template is the
-step that does not require that migration first. `identity-center.yaml` below
-is that migration.
+```
+Unable to create or refresh login credentials due to insufficient permissions.
+You may be missing permission for the 'signin:CreateOAuth2Token' action.
+```
+
+Both policies here grant those actions, so the path keeps working. The failure
+mode is worth knowing anyway, because it is delayed: existing credentials keep
+working until they expire, and only the refresh fails. A profile that looks
+healthy immediately after the detach can stop working hours later.
+
+This is the general hazard of the boundary, in concrete form. Anything the user
+relied on that was covered only by `AdministratorAccess` has to be named
+explicitly in **both** documents, since the boundary caps whatever the identity
+policy grants. Granting it in one and not the other achieves nothing.
+
+Changing which user holds the entry point
+-----------------------------------------
+
+The identity signed in to day to day should be the low privilege one, elevating
+through the role when it needs to. A user named for administration holding the
+entry point invites the opposite habit.
+
+`TrustedUserName` is that identity; `AdditionalTrustedUserName` exists so the
+switch can happen without a gap. Trust both, confirm the new one works, then
+empty the second parameter.
+
+```sh
+# 1. Trust both. The new user gains the assume grant, the old one keeps it.
+aws cloudformation deploy \
+  --template-file infra/agent-session-role.yaml \
+  --stack-name agent-session-role \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region eu-central-1 \
+  --parameter-overrides TrustedUserName=christian AdditionalTrustedUserName=christianAdmin
+
+# 2. Verify, signed in as the new user.
+aws sts assume-role \
+  --role-arn "arn:aws:iam::<account-id>:role/agent-session-admin" \
+  --role-session-name preflight --query 'AssumedRoleUser.Arn'
+
+# 3. Drop the old one.
+aws cloudformation deploy \
+  --template-file infra/agent-session-role.yaml \
+  --stack-name agent-session-role \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region eu-central-1 \
+  --parameter-overrides TrustedUserName=christian AdditionalTrustedUserName=""
+```
+
+Emptying the second parameter is what actually retires the old user: it removes
+that user from the trust policy and from `agent-session-assume-only`. If the
+user also carries the boundary, those two were the whole of its access, so it
+is left inert. Revoking its keys and console password is a separate step, and
+deleting the user should wait until the new path has carried real work.
+
+Do not empty it before the verification passes. In between, both users can
+elevate, which is the point: there is no moment where nobody can.
+
+**Renaming the entry point does not by itself reduce anything.** Whatever the
+new user already has, it keeps. If it holds `AdministratorAccess` directly, the
+switch has to be paired with the same detach documented above, or the result is
+a low privilege role sitting next to a user that never needed it. Check first:
+
+```sh
+aws iam list-attached-user-policies --user-name <new-user>
+aws iam list-groups-for-user --user-name <new-user>
+```
+
+Group membership matters as much as attached policies, and is the easier of the
+two to overlook.
+
+Order:
+
+1. deploy with both users named, so neither loses access
+2. verify the new user can assume the role
+3. detach `AdministratorAccess` from the new user if it has it, following the
+   same sequence as above
+4. redeploy with `AdditionalTrustedUserName=""` to drop the old user
+5. retire the old user's access key once nothing depends on it
+
+### A boundary on an interactive identity
+
+Applying `agent-session-boundary` to a user that signs in to the console is a
+larger step than applying it to a programmatic one, and is best left until last.
+
+A boundary denies everything it does not name, and what an interactive session
+needs is harder to enumerate than it looks. Detaching `AdministratorAccess` from
+this account's user silently removed the sign in actions the CLI's browser login
+depends on, and the failure did not appear until the cached credential expired
+some time later. A boundary would have blocked the repair as well as the
+original permission.
+
+Attach the assume only policy first, work normally for a while, and read
+CloudTrail for denied calls before adding the ceiling.
+
+Making the reduction durable
+----------------------------
+
+Detaching `AdministratorAccess` removes today's standing privilege, but it does
+not stop the policy being reattached, and a new access key minted on the user
+inherits whatever is attached at the time. `agent-session-assume-only` permits
+self service key management by design, so that path stays open.
+
+`agent-session-boundary` is the ceiling. Effective permissions are the
+intersection of a principal's attached policies and its boundary, and a boundary
+grants nothing by itself, so with it in place reattaching `AdministratorAccess`
+to the user would confer nothing beyond assuming the role and managing its own
+credentials.
+
+Apply it after the swap is complete and verified, to a user whose only job is
+to elevate:
+
+```sh
+aws iam put-user-permissions-boundary \
+  --user-name christian \
+  --permissions-boundary arn:aws:iam::<account-id>:policy/agent-session-boundary \
+  --region eu-central-1
+```
+
+Confirm:
+
+```sh
+aws iam get-user --user-name christian --query "User.PermissionsBoundary"
+```
+
+To remove it, `aws iam delete-user-permissions-boundary --user-name christian`.
+
+**Check what else the user holds before attaching it.** A boundary caps
+everything, not only administrative access. Applied to a user that also carries
+day to day permissions, it leaves those policies attached and ineffective, and
+the resulting `AccessDenied` points at the call rather than at the boundary.
+`christian` currently holds S3 and Lambda policies for ordinary development, so
+the boundary as written would take those away. Either leave that user unbounded
+and let `agent-session-assume-only` carry the intent, or widen the boundary to
+cover what the user is meant to keep.
+
+On a user that holds only `agent-session-assume-only`, the boundary mirrors it
+and applying it changes nothing about what works today. That is the intent: a
+ceiling, not a further reduction.
+
+**Keep the two documents in step.** A boundary narrower than the attached policy
+silently breaks whatever falls outside it. If `agent-session-assume-only` gains
+a permission, the boundary needs it too.
+
+What a boundary on the user does not cover
+------------------------------------------
+
+The boundary constrains the user, not the role. `agent-session-admin` still has
+`AdministratorAccess`, so anything holding a session from it can create a fresh
+IAM user with `AdministratorAccess` and a permanent key, reproducing exactly the
+arrangement this stack exists to remove.
+
+Closing that requires constraining the role itself, either with a `Deny` on
+`iam:CreateUser` and `iam:CreateRole` unless the request carries a permissions
+boundary, or with a service control policy. An SCP is the stronger of the two
+because it cannot be edited from inside the account it governs.
+
+SCPs require AWS Organizations, and that prerequisite is met: this account is
+the management account of an organization created with `FeatureSet: ALL`, and
+`SERVICE_CONTROL_POLICY` is listed as an enabled policy type. Confirm with
+`aws organizations describe-organization`.
+
+Neither control is in this template. The `Deny` variant is a small addition;
+the SCP route is now a matter of writing one rather than of restructuring the
+account first.
+
+IAM Identity Center
+-------------------
+
+The end state where no permanent key exists at all. Access is established
+through a browser login (`aws sso login`), credentials are short lived by
+construction, and there is no `AKIA` key anywhere to leak or rotate.
+
+Identity Center offers two instance types, and the distinction decides what is
+possible:
+
+- an **account instance** can be created in a standalone account, but does not
+  support AWS account access or permission sets, so it cannot replace the IAM
+  user for this purpose
+- an **organization instance** does support permission sets and account access,
+  and requires AWS Organizations
+
+The organization prerequisite is met, and an Identity Center instance has
+existed in `us-east-1` since 2026-08-04, with its identity store alongside it.
+Neither of those is visible to a principal without `sso:ListInstances`, so read
+them from an elevated session:
+
+```sh
+aws sso-admin list-instances --region us-east-1
+```
+
+Enabling Identity Center from the console does not tell you which instance type
+you got, and only an organization instance supports the permission sets this
+would need. Confirm the type before depending on it, by listing permission sets
+against the instance: an account instance rejects that call.
+
+The permission sets and account assignments themselves are
+`identity-center.yaml`, below.
 
 identity-center.yaml
 --------------------
@@ -429,6 +647,19 @@ aws cloudformation deploy \
 Pass `--region us-east-1`, not the primary Region. The stack has to live in
 the Region its Identity Center instance was enabled in, and this is the one
 stack here where that is not `eu-central-1`.
+
+**A permission set created in the console blocks this.** The stack creates one
+named `AdministratorAccess`, and if that name is taken the create fails with
+`AlreadyExists` and the stack rolls back. Clearing it is three steps in order,
+because a permission set with an assignment carries an application profile and
+cannot be deleted: `delete-account-assignment`, then `delete-permission-set`,
+then `delete-stack` on the `ROLLBACK_COMPLETE` remains. Only then will a deploy
+succeed.
+
+The failure is quiet from the outside. Reading any of this needs `sso:`
+permissions the day to day user does not hold, so an unelevated look returns
+`AccessDenied`, which is a statement about the caller and not about the
+account. Check `sts get-caller-identity` before believing any answer here.
 
 ### 5. Point the CLI at it
 
