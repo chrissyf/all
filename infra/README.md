@@ -497,11 +497,16 @@ arrangement this stack exists to remove.
 Closing that requires constraining the role itself, either with a `Deny` on
 `iam:CreateUser` and `iam:CreateRole` unless the request carries a permissions
 boundary, or with a service control policy. An SCP is the stronger of the two
-because it cannot be edited from inside the account it governs, but SCPs require
-AWS Organizations, which this account is not part of.
+because it cannot be edited from inside the account it governs.
 
-Neither is in this template. The `Deny` variant is a small addition; the SCP
-route depends on the Organizations decision described below.
+SCPs require AWS Organizations, and that prerequisite is met: this account is
+the management account of an organization created with `FeatureSet: ALL`, and
+`SERVICE_CONTROL_POLICY` is listed as an enabled policy type. Confirm with
+`aws organizations describe-organization`.
+
+Neither control is in this template. The `Deny` variant is a small addition;
+the SCP route is now a matter of writing one rather than of restructuring the
+account first.
 
 IAM Identity Center
 -------------------
@@ -510,8 +515,8 @@ The end state where no permanent key exists at all. Access is established
 through a browser login (`aws sso login`), credentials are short lived by
 construction, and there is no `AKIA` key anywhere to leak or rotate.
 
-Reaching it from a standalone account is not a small change. Identity Center
-offers two instance types, and the distinction decides the work:
+Identity Center offers two instance types, and the distinction decides what is
+possible:
 
 - an **account instance** can be created in a standalone account, but does not
   support AWS account access or permission sets, so it cannot replace the IAM
@@ -519,13 +524,20 @@ offers two instance types, and the distinction decides the work:
 - an **organization instance** does support permission sets and account access,
   and requires AWS Organizations
 
-So adopting Identity Center here means first creating an organization with this
-account as its management account. That is a structural change to the account,
-awkward to reverse, and it brings its own surface. It also unlocks SCPs, which
-is the durable control missing above, so the two open items resolve together or
-not at all.
+The organization prerequisite is met, and an Identity Center instance has
+existed in `us-east-1` since 2026-08-04, with its identity store alongside it.
+Neither of those is visible to a principal without `sso:ListInstances`, so read
+them from an elevated session:
 
-Worth doing when the account grows past one person or one workload. For a single
-operator on a single account, the role plus boundary arrangement in this stack
-already removes the standing credential, and the remaining gain is narrower than
-the migration cost.
+```sh
+aws sso-admin list-instances --region us-east-1
+```
+
+Enabling Identity Center from the console does not tell you which instance type
+you got, and only an organization instance supports the permission sets this
+would need. Confirm the type before depending on it, by listing permission sets
+against the instance: an account instance rejects that call.
+
+What remains is the permission sets and account assignments themselves. Until
+those exist, the role plus boundary arrangement in this stack is what removes
+the standing credential.
