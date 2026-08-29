@@ -563,10 +563,11 @@ The permission sets and account assignments themselves are
 identity-center.yaml
 --------------------
 
-Permission sets and account assignments for IAM Identity Center. Deploying it
-is the last step of a longer procedure, most of which cannot be automated.
+The permission sets and account assignments for IAM Identity Center. Everything
+else Identity Center needs is a precondition rather than a step this template
+performs.
 
-### What this template does not do
+### What it does not do
 
 It does not enable Identity Center. AWS documents enabling an organization
 instance as a console action, performed in the Organizations management
@@ -574,39 +575,55 @@ account while signed in as an administrative user or the root user, and no
 CloudFormation resource type creates an instance. `AWS::SSO::PermissionSet`
 and `AWS::SSO::Assignment` operate on an instance that already exists.
 
-So the split is: enable by hand once, then keep every grant in git.
+It does not create users or groups either. Those live in the identity store,
+and the template names a group by id.
 
-### 1. Enable Identity Center
+So the split is: establish the preconditions by hand once, then keep every
+grant in git.
 
-Already done. An organization instance exists in `us-east-1`, enabled in
-August 2026, using the default Identity Center directory. The account is the
-management account of its organization.
+### Preconditions
 
-The Region is the surprising part, since everything else here is
-`eu-central-1`. It stays as it is on purpose. A Region is fixed for the life
-of an instance, and switching means deleting the instance and recreating
-users, groups, permission sets, applications and assignments, which also
-changes the access portal URL. Replicating to an additional Region does not
-help, because replication adds a Region without moving the primary one. Since
-the instance grants access to the whole account regardless of where it runs,
-the only thing gained by moving would be holding identity data in the EU, and
-that did not justify a teardown here.
+All four hold on this account. The checks are written out because each one, when
+missing, fails in a way that does not name itself.
 
-Read the instance ARN and identity store id from the Identity Center console
-under Settings.
+**An organization, with this account as its management account.** Permission
+sets and account assignments exist only on an organization instance of Identity
+Center. An account instance, which is what a standalone account can create,
+supports neither, so without an organization this template has nothing to
+deploy against.
 
-### 2. Create a group and a user
+```sh
+aws organizations describe-organization
+```
 
-In the Identity Center directory, create a group, create your user, and put
-the user in the group. The template assigns access to a group by default so
-that adding or removing an administrator is a directory change rather than a
-stack update.
+**An organization instance of Identity Center, in `us-east-1`.** The Region is
+the surprising part, since everything else here is `eu-central-1`. It stays as
+it is on purpose. A Region is fixed for the life of an instance, and switching
+means deleting the instance and recreating users, groups, permission sets,
+applications and assignments, which also changes the access portal URL.
+Replicating to an additional Region does not help, because replication adds a
+Region without moving the primary one. Since the instance grants access to the
+whole account regardless of where it runs, the only thing gained by moving
+would be holding identity data in the EU, and that did not justify a teardown.
 
-Name the group for the access it receives, `administrators` rather than
-`developers`. The permission set this stack creates is `AdministratorAccess`,
-so everyone in the group named here is a full account administrator. A group
-named after a job title stops being true the first time someone joins it who
-should not hold admin, and nothing in the directory flags that drift.
+```sh
+aws sso-admin list-instances --region us-east-1
+```
+
+That gives `InstanceArn` and `IdentityStoreId`. It does not give the instance
+type, and neither does the console: enabling from there tells you nothing about
+which kind you got. Listing permission sets against the instance is the
+confirmation, because an account instance rejects that call.
+
+**A group named for the access it receives.** The template assigns to a group
+by default, so that adding or removing an administrator is a directory change
+rather than a stack update.
+
+Name it `administrators` rather than `developers`. The permission set this
+stack creates is `AdministratorAccess`, so everyone in the group named here is
+a full account administrator. A group named after a job title stops being true
+the first time someone joins it who should not hold admin, and nothing in the
+directory flags that drift.
 
 A user can belong to several groups, so keeping a separate `developers` group
 costs nothing now and is where a narrower permission set goes when there is
@@ -614,25 +631,39 @@ one. That narrowing is the same deferred work `agent-session-role.yaml`
 describes: remove the standing credential first, reduce what a session can do
 once there is a record of what it actually calls.
 
-### 3. Collect the two identifiers
-
 ```sh
-aws sso-admin list-instances --region us-east-1
-aws identitystore list-groups \
-  --identity-store-id <IdentityStoreId from the call above> \
-  --region us-east-1
+aws identitystore list-groups --identity-store-id d-xxxxxxxxxx --region us-east-1
 ```
 
-The first gives `InstanceArn` and `IdentityStoreId`, the second the group's
-`GroupId`. That GroupId is the `PrincipalId` parameter, and it is a directory
-id unrelated to any IAM user name.
-
-It comes in one of two shapes. A store migrated off legacy AWS SSO issues a
-bare GUID; a store created new prefixes the store id, as
-`1234567890-<guid>`. This instance is the second kind. Pass whatever
+The group's `GroupId` is the `PrincipalId` parameter. It is a directory id,
+unrelated to any IAM user name, and comes in one of two shapes: a store
+migrated off legacy AWS SSO issues a bare GUID, while a store created new
+prefixes the store id, as `1234567890-` followed by a GUID. Pass whatever
 `list-groups` prints, in full.
 
-### 4. Deploy
+**Nothing else already owns the name `AdministratorAccess`.** The stack creates
+a permission set with that name, and if it is taken the create fails with
+`AlreadyExists` and rolls back. A console experiment is the usual cause.
+
+Clearing it is three steps, in order, because a permission set carrying an
+assignment has an application profile and cannot be deleted:
+`delete-account-assignment`, then `delete-permission-set`, then `delete-stack`
+on the `ROLLBACK_COMPLETE` remains.
+
+### Checking preconditions needs an elevated session
+
+Every command above needs `sso:` or `organizations:` permissions that the day
+to day user does not hold. Run unelevated they return `AccessDenied`, which is
+a statement about the caller and not about the account, and it is
+indistinguishable from the thing genuinely being absent.
+
+Confirm which principal you are before believing any answer here:
+
+```sh
+aws sts get-caller-identity
+```
+
+### Deploy
 
 ```sh
 aws cloudformation deploy \
@@ -648,20 +679,7 @@ Pass `--region us-east-1`, not the primary Region. The stack has to live in
 the Region its Identity Center instance was enabled in, and this is the one
 stack here where that is not `eu-central-1`.
 
-**A permission set created in the console blocks this.** The stack creates one
-named `AdministratorAccess`, and if that name is taken the create fails with
-`AlreadyExists` and the stack rolls back. Clearing it is three steps in order,
-because a permission set with an assignment carries an application profile and
-cannot be deleted: `delete-account-assignment`, then `delete-permission-set`,
-then `delete-stack` on the `ROLLBACK_COMPLETE` remains. Only then will a deploy
-succeed.
-
-The failure is quiet from the outside. Reading any of this needs `sso:`
-permissions the day to day user does not hold, so an unelevated look returns
-`AccessDenied`, which is a statement about the caller and not about the
-account. Check `sts get-caller-identity` before believing any answer here.
-
-### 5. Point the CLI at it
+### Pointing the CLI at it
 
 ```sh
 aws configure sso
@@ -672,19 +690,25 @@ Settings as `https://d-xxxxxxxxxx.awsapps.com/start`, then for a Region, then
 for the account and permission set. The permission set name is
 `AdministratorAccess`, the `PermissionSetName` output of the stack.
 
-It asks for a Region twice, and here the two answers differ. The SSO session
-Region is where the instance lives, `us-east-1`. The profile's own default
-Region is where you work, `eu-central-1`. Answering `eu-central-1` to the
-first fails to find the instance, and answering `us-east-1` to the second
-quietly points every later command at the wrong Region.
+It asks for a Region twice, and the two answers differ. The SSO session Region
+is where the instance lives, `us-east-1`. The profile's own default Region is
+where you work, `eu-central-1`. Answering `eu-central-1` to the first fails to
+find the instance, and answering `us-east-1` to the second quietly points every
+later command at the wrong Region.
 
-### 6. Point VS Code at it
+A working profile reports an assumed role rather than a user:
+
+```
+arn:aws:sts::<account-id>:assumed-role/AWSReservedSSO_AdministratorAccess_<suffix>/<user>
+```
+
+### Pointing VS Code at it
 
 The AWS Toolkit supports IAM Identity Center natively. Add the connection
-through the Toolkit rather than through a profile, and the
-`credential_process` shim described under "Visual Studio Code" above becomes
-unnecessary. Delete the `vscode` profile once the SSO connection works, so
-there is one credential path rather than two.
+through the Toolkit rather than through a profile, and the `credential_process`
+shim described under "Visual Studio Code" above becomes unnecessary. Delete the
+`vscode` profile once the SSO connection works, so there is one credential path
+rather than two.
 
 ### What this closes, and what it does not
 
