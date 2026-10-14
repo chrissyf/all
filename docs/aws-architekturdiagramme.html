@@ -1,0 +1,659 @@
+<title>Bestellung und Remediation</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: eine ruhige Lesespalte, Diagramme brechen auf volle Breite aus und scrollen auf Telefonen seitlich */
+:root {
+  --bg: #f3f5f8;
+  --paper: #ffffff;
+  --fg: #15202c;
+  --fg-soft: #46525f;
+  --muted: #5d6977;
+  --rule: #d5dbe3;
+  --node: #ffffff;
+  --node-stroke: #95a1b0;
+  --data: #1c5bc9;
+  --event: #7a3ed4;
+  --error: #c9362b;
+  --sec: #1f7d45;
+  --scale: #a35f00;
+  --c-compute: #e36a00;
+  --c-integ: #d4146f;
+  --c-db: #b522bd;
+  --c-net: #7b45f0;
+  --c-sec: #d0303f;
+  --c-mgmt: #c3155f;
+  --c-dev: #3443c2;
+  --c-ext: #66727f;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --sans: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --paper: #151c25; --fg: #e5eaf0; --fg-soft: #b7c1cd; --muted: #95a1af;
+    --rule: #2a3542; --node: #1a222d; --node-stroke: #4a5768;
+    --data: #6ea2ff; --event: #b58eff; --error: #ff7468; --sec: #52c784; --scale: #f0aa45;
+    --c-ext: #5d6977;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --paper: #151c25; --fg: #e5eaf0; --fg-soft: #b7c1cd; --muted: #95a1af;
+  --rule: #2a3542; --node: #1a222d; --node-stroke: #4a5768;
+  --data: #6ea2ff; --event: #b58eff; --error: #ff7468; --sec: #52c784; --scale: #f0aa45;
+  --c-ext: #5d6977;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 400 15px/1.6 var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 72px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 56px; }
+header { display: grid; gap: 14px; max-width: 760px; }
+.eyebrow { font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 clamp(30px, 5vw, 46px)/1.08 var(--display); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font: 700 30px/1.15 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 600 19px/1.3 var(--display); margin: 0; letter-spacing: .01em; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--fg-soft); font-size: 16.5px; }
+code { font: 500 .88em var(--mono); background: color-mix(in srgb, var(--fg) 7%, transparent); padding: .08em .35em; border-radius: 4px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; padding: 14px 18px; background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--fg-soft); }
+.legend svg { flex: none; }
+
+section.scenario { display: grid; gap: 26px; }
+.scen-head { display: grid; gap: 10px; border-top: 2px solid var(--fg); padding-top: 18px; }
+.scen-no { font: 700 13px/1 var(--mono); color: var(--muted); letter-spacing: .08em; }
+.task { color: var(--fg-soft); border-left: 3px solid var(--rule); padding-left: 14px; max-width: 80ch; }
+
+.figure { background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.figure svg.dg { display: block; width: 100%; min-width: 1000px; height: auto; }
+.scroll-hint { font-size: 12.5px; color: var(--muted); display: none; }
+@media (max-width: 1000px) { .scroll-hint { display: block; } }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 28px 40px; }
+.cols > * { min-width: 0; display: grid; gap: 12px; align-content: start; }
+
+.tbl { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule); }
+th { font: 600 11.5px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+td.n { width: 2.4em; font: 700 13px var(--mono); font-variant-numeric: tabular-nums; }
+td.n b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: var(--paper); font-size: 11px; }
+td.n b.data { background: var(--data); } td.n b.event { background: var(--event); } td.n b.error { background: var(--error); } td.n b.flow { background: var(--fg-soft); }
+td.k { font-weight: 600; white-space: nowrap; padding-right: 18px; }
+
+ul.list { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+ul.list li { padding-left: 20px; position: relative; max-width: 72ch; }
+ul.list li::before { content: ""; position: absolute; left: 2px; top: .62em; width: 9px; height: 2px; }
+ul.err li::before { background: var(--error); }
+ul.sec li::before { background: var(--sec); }
+ul.scale li::before { background: var(--scale); }
+.lab { font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.lab.err { color: var(--error); } .lab.sec { color: var(--sec); } .lab.scale { color: var(--scale); }
+.note { font-size: 13px; color: var(--muted); max-width: 90ch; }
+
+/* SVG */
+.dg .box { fill: var(--node); stroke: var(--node-stroke); stroke-width: 1; }
+.dg .t { font: 600 12.5px var(--sans); fill: var(--fg); }
+.dg .s { font: 400 10.5px var(--sans); fill: var(--muted); }
+.dg .ic { font: 700 9px var(--mono); fill: #fff; }
+.dg .e { fill: none; stroke-width: 1.6; stroke-linejoin: round; }
+.dg .e.data { stroke: var(--data); }
+.dg .e.event { stroke: var(--event); stroke-dasharray: 7 4; }
+.dg .e.error { stroke: var(--error); stroke-dasharray: 2.5 3; stroke-width: 1.8; }
+.dg .e.flow { stroke: var(--fg-soft); }
+.dg .halo { fill: none; stroke: var(--paper); stroke-width: 7; stroke-linejoin: round; }
+.dg .m-data { fill: var(--data); } .dg .m-event { fill: var(--event); } .dg .m-error { fill: var(--error); } .dg .m-flow { fill: var(--fg-soft); }
+.dg .bd { fill: var(--sec); fill-opacity: .035; stroke: var(--sec); stroke-dasharray: 7 4; stroke-width: 1.3; }
+.dg .bdl { font: 600 11px var(--sans); fill: var(--sec); letter-spacing: .02em; }
+.dg .grp { fill: var(--c-integ); fill-opacity: .035; stroke: var(--c-integ); stroke-width: 1.2; }
+.dg .grpl { font: 600 12px var(--sans); fill: var(--fg); }
+.dg .grps { font: 400 10.5px var(--sans); fill: var(--muted); }
+.dg .st rect { fill: var(--paper); stroke: var(--fg-soft); stroke-width: 1.1; }
+.dg .st.comp rect { stroke: var(--error); }
+.dg .st.choice rect { stroke: var(--event); stroke-width: 1.4; }
+.dg .st.ok rect { stroke: var(--sec); }
+.dg .st text { font: 500 11.5px var(--sans); fill: var(--fg); }
+.dg .lbl { font: 500 10.5px var(--sans); fill: var(--fg-soft); paint-order: stroke; stroke: var(--paper); stroke-width: 4px; stroke-linejoin: round; }
+.dg .lbl.err { fill: var(--error); }
+.dg .bdg text { font: 700 10px var(--mono); fill: var(--paper); }
+.dg .bdg.data circle { fill: var(--data); } .dg .bdg.event circle { fill: var(--event); } .dg .bdg.error circle { fill: var(--error); } .dg .bdg.flow circle { fill: var(--fg-soft); }
+.dg .pill rect { fill: var(--paper); stroke-width: 1.1; }
+.dg .pill.scale rect { stroke: var(--scale); } .dg .pill.scale text { fill: var(--scale); }
+.dg .pill.sec rect { stroke: var(--sec); } .dg .pill.sec text { fill: var(--sec); }
+.dg .pill text { font: 600 10.5px var(--sans); }
+.dg .nt rect { fill: var(--paper); stroke-width: 1.2; }
+.dg .nt.sec rect { stroke: var(--sec); }
+.dg .nt.obs rect { stroke: var(--node-stroke); stroke-dasharray: 3 3; }
+.dg .nt .nth { font: 600 12px var(--sans); }
+.dg .nt.sec .nth { fill: var(--sec); } .dg .nt.obs .nth { fill: var(--fg); }
+.dg .nt .ntl { font: 400 11px var(--sans); fill: var(--fg-soft); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Übung · Architekturdiagramme zeichnen</div>
+    <h1>Lösungen zu Szenario 2 und 3</h1>
+    <p class="lede">Zwei AWS-Architekturen mit beschrifteten Daten- und Ereignisflüssen, Fehlerpfaden sowie Sicherheits- und Skalierungsgrenzen. Die Nummern im Diagramm entsprechen den Schritten in der Tabelle darunter.</p>
+  </header>
+
+  <div class="legend" aria-label="Legende">
+    <span><svg width="44" height="10"><line x1="2" y1="5" x2="36" y2="5" stroke="var(--data)" stroke-width="2"/><path d="M34 1 L42 5 L34 9 z" fill="var(--data)"/></svg>Datenfluss</span>
+    <span><svg width="44" height="10"><line x1="2" y1="5" x2="36" y2="5" stroke="var(--event)" stroke-width="2" stroke-dasharray="7 4"/><path d="M34 1 L42 5 L34 9 z" fill="var(--event)"/></svg>Ereignisfluss</span>
+    <span><svg width="44" height="10"><line x1="2" y1="5" x2="36" y2="5" stroke="var(--error)" stroke-width="2" stroke-dasharray="2.5 3"/><path d="M34 1 L42 5 L34 9 z" fill="var(--error)"/></svg>Fehlerpfad</span>
+    <span><svg width="44" height="18"><rect x="2" y="2" width="40" height="14" rx="3" fill="none" stroke="var(--sec)" stroke-width="1.4" stroke-dasharray="6 3"/></svg>Sicherheitsgrenze (Konto, Rolle, Scope)</span>
+    <span><svg width="44" height="18"><rect x="2" y="2" width="40" height="14" rx="7" fill="none" stroke="var(--scale)" stroke-width="1.4"/></svg>Skalierungsgrenze</span>
+  </div>
+
+  <!-- ============ SZENARIO 2 ============ -->
+  <section class="scenario" id="bestellung">
+    <div class="scen-head">
+      <div class="scen-no">SZENARIO 2</div>
+      <h2>Bestellprozess mit Saga und dreifacher Idempotenz</h2>
+      <p class="task">Eine API nimmt Bestellungen an. Zahlung, Lager und Versand arbeiten entkoppelt; jeder Schritt muss nachvollziehbar, wiederholbar und gegen Doppelverarbeitung geschützt sein.</p>
+    </div>
+    <p>Die API speichert die Bestellung und antwortet sofort. Ein DynamoDB-Stream dient als Transactional Outbox und startet eine Step-Functions-Saga. Jede Fachdomäne hat eine eigene Queue, einen eigenen Worker und ein eigenes Konto. Die Saga orchestriert, die Domänen kennen sich gegenseitig nicht.</p>
+    <div class="figure"><svg class="dg" id="d2" viewBox="0 0 1240 945" role="img" aria-label="AWS-Architektur Bestellprozess"></svg></div>
+    <p class="scroll-hint">Diagramm seitlich verschieben, um alles zu sehen.</p>
+
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Nr.</th><th>Fluss</th><th>Was passiert</th></tr></thead>
+        <tbody>
+          <tr><td class="n"><b class="data">1</b></td><td class="k">Client → CloudFront</td><td><code>POST /orders</code> über HTTPS mit Header <code>Idempotency-Key</code> (UUID, vom Client je Bestellung einmal erzeugt und bei Wiederholung gleich gesendet).</td></tr>
+          <tr><td class="n"><b class="data">2</b></td><td class="k">WAF → API Gateway</td><td>AWS WAF filtert mit Managed Rules und Rate-Based Rules; CloudFront leitet an den regionalen API-Endpunkt.</td></tr>
+          <tr><td class="n"><b class="data">3</b></td><td class="k">API Gateway ↔ Cognito</td><td>JWT-Authorizer prüft das Token, API Gateway validiert das Request-Schema. Ungültige Anfragen enden hier mit 401 oder 400.</td></tr>
+          <tr><td class="n"><b class="data">4</b></td><td class="k">API Gateway → Order API</td><td>Lambda erzeugt die <code>orderId</code>, die ab jetzt in Logs, Traces und Events als Korrelations-ID mitläuft.</td></tr>
+          <tr><td class="n"><b class="data">5</b></td><td class="k">Order API → Idempotenz</td><td>Schreiben mit <code>attribute_not_exists(key)</code>. Ist der Key schon vorhanden, kommt die gespeicherte Antwort zurück und es entsteht keine zweite Bestellung.</td></tr>
+          <tr><td class="n"><b class="data">6</b></td><td class="k">Order API → Orders</td><td>Bestellung mit Status <code>PENDING</code>. Schritt 5 und 6 laufen in einer <code>TransactWriteItems</code>, also ganz oder gar nicht. Antwort an den Client: <code>202 Accepted</code> mit <code>orderId</code>.</td></tr>
+          <tr><td class="n"><b class="event">7</b></td><td class="k">Stream → Pipes</td><td>DynamoDB Streams liefern jedes neue Item genau einmal pro Shard in Reihenfolge. EventBridge Pipes filtert auf <code>INSERT</code> und formt das Event <code>OrderPlaced</code>.</td></tr>
+          <tr><td class="n"><b class="event">8</b></td><td class="k">Pipes → Event Bus</td><td>Event landet auf dem Bus <code>orders-bus</code>; ein Archiv speichert alle Events für späteres Replay.</td></tr>
+          <tr><td class="n"><b class="event">9</b></td><td class="k">Regel → Step Functions</td><td>Regel startet die Saga mit Ausführungsname = <code>orderId</code>. Ein zweiter Start mit demselben Namen wird mit <code>ExecutionAlreadyExists</code> abgelehnt.</td></tr>
+          <tr><td class="n"><b class="event">10</b></td><td class="k">Saga → Domänen-Queues</td><td>Jeder Task schickt eine Nachricht mit Task-Token an die Queue der Domäne (<code>waitForTaskToken</code>, Heartbeat-Timeout gesetzt).</td></tr>
+          <tr><td class="n"><b class="data">11</b></td><td class="k">Worker → Dedupe</td><td>Worker schreibt <code>orderId#schritt</code> bedingt in die Dedupe-Tabelle und führt den Schritt nur aus, wenn der Eintrag neu ist. Externe Aufrufe tragen einen eigenen Idempotency-Key.</td></tr>
+          <tr><td class="n"><b class="event">12</b></td><td class="k">Worker → Saga</td><td><code>SendTaskSuccess</code> oder <code>SendTaskFailure</code>. Die Saga fährt fort oder springt in die Kompensation.</td></tr>
+          <tr><td class="n"><b class="data">13</b></td><td class="k">Saga → Orders</td><td>Status <code>CONFIRMED</code> oder <code>FAILED</code> wird gesetzt; das zugehörige Event geht an den Bus (Kundenbenachrichtigung, Analytics).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Anforderung</th><th>Umsetzung</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Entkoppelt</td><td>Je Domäne eigene Queue, eigener Worker, eigene Datenhaltung. Fällt der Versand aus, puffert seine Queue; Zahlung und Lager laufen weiter.</td></tr>
+          <tr><td class="k">Nachvollziehbar</td><td>Ausführungshistorie je Bestellung in Step Functions, X-Ray-Trace von API bis Worker, strukturierte Logs mit <code>orderId</code>, Status in <code>Orders</code>, EventBridge-Archiv, CloudTrail für API-Aufrufe.</td></tr>
+          <tr><td class="k">Wiederholbar</td><td>SQS-Redrive aus der DLQ, Step-Functions-Retry und Redrive ab dem fehlgeschlagenen Schritt, EventBridge-Replay aus dem Archiv. Das ist sicher, weil jeder Schritt idempotent ist.</td></tr>
+          <tr><td class="k">Keine Doppelverarbeitung</td><td>Drei Ebenen: Idempotency-Key an der API, eindeutiger Ausführungsname der Saga, Dedupe-Tabelle je Schritt. Dazu der Idempotency-Key beim Zahlungsanbieter, damit nie doppelt belastet wird.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cols">
+      <div>
+        <div class="lab err">Fehlerpfade</div>
+        <ul class="list err">
+          <li><b>Transienter Worker-Fehler:</b> Nachricht wird nach dem Visibility-Timeout erneut zugestellt. Nach 5 Versuchen geht sie in die DLQ, ein Alarm meldet jede Nachricht dort, Redrive nach dem Fix.</li>
+          <li><b>Timeout oder fehlender Heartbeat:</b> Step Functions wiederholt den Task 3-mal mit exponentiellem Backoff und Jitter, danach greift <code>Catch</code>.</li>
+          <li><b>Fachlicher Fehler:</b> Lager leer → direkt <code>FAILED</code>. Zahlung abgelehnt → Reservierung freigeben → <code>FAILED</code>. Versand unmöglich → Zahlung erstatten → Reservierung freigeben → <code>FAILED</code>.</li>
+          <li><b>Zustellung an Ziele:</b> EventBridge-Regel und Pipe haben eigene Retry-Policies und eine DLQ, damit kein Event verloren geht.</li>
+          <li><b>Duplikate:</b> gleicher Key → gespeicherte Antwort; doppeltes Event → <code>ExecutionAlreadyExists</code>; doppelte SQS-Zustellung → Dedupe-Treffer, Worker meldet nur das gespeicherte Ergebnis.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="lab sec">Sicherheitsgrenzen</div>
+        <ul class="list sec">
+          <li>Öffentliche Kante nur über CloudFront mit WAF, TLS und Cognito-JWT. API Gateway akzeptiert nur Aufrufe über CloudFront.</li>
+          <li>Jede Domäne in eigenem Konto bzw. mit eigener IAM-Rolle: ein Worker darf nur die eigene Queue lesen und <code>SendTask*</code> nur für diese eine State Machine aufrufen.</li>
+          <li>Zahlung im PCI-Scope; das Credential für den Zahlungsanbieter liegt in Secrets Manager und rotiert automatisch.</li>
+          <li>Verschlüsselung mit KMS für DynamoDB, SQS, EventBridge und Logs; Queue-Policies erlauben nur die Rolle der State Machine.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="lab scale">Skalierungsgrenzen</div>
+        <ul class="list scale">
+          <li>Throttling und Usage Plans an API Gateway schützen das Backend vor einzelnen Clients.</li>
+          <li>SQS puffert Lastspitzen je Domäne. Reserved Concurrency am Zahlungs-Worker hält das Ratenlimit des Zahlungsanbieters ein.</li>
+          <li>DynamoDB im On-Demand-Modus. Bei sehr hohem Bestellvolumen die StartExecution-Quotas von Step Functions prüfen und den Start über eine Queue glätten.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SZENARIO 3 ============ -->
+  <section class="scenario" id="remediation">
+    <div class="scen-head">
+      <div class="scen-no">SZENARIO 3</div>
+      <h2>Produktions-Remediation nach fehlerhaftem Deployment</h2>
+      <p class="task">Ein Deployment erhöht 5xx-Rate und Latenz. Gezeigt werden Erkennung, Ereignisvermittlung, Diagnose und Entscheidung, Rollback und Benachrichtigung einschließlich Sicherheitsgrenzen.</p>
+    </div>
+    <p>Es gibt zwei Wege zurück zur letzten guten Version. Solange das Deployment noch läuft, rollt CodeDeploy selbst zurück, sobald der Alarm auslöst. Fällt der Fehler erst nach dem Deployment auf, startet im separaten Operations-Konto ein Workflow, der diagnostiziert, nach festen Regeln entscheidet und nur innerhalb enger Leitplanken selbst handelt.</p>
+    <div class="figure"><svg class="dg" id="d3" viewBox="0 0 1240 900" role="img" aria-label="AWS-Architektur Produktions-Remediation"></svg></div>
+    <p class="scroll-hint">Diagramm seitlich verschieben, um alles zu sehen.</p>
+
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Nr.</th><th>Fluss</th><th>Was passiert</th></tr></thead>
+        <tbody>
+          <tr><td class="n"><b class="data">1</b></td><td class="k">CodePipeline → CodeDeploy</td><td>ECS Blue/Green mit Canary 10 % für 5 Minuten. Die CloudWatch-Alarme sind an die Deployment-Gruppe gebunden, Auto-Rollback ist aktiv.</td></tr>
+          <tr><td class="n"><b class="data">2</b></td><td class="k">CodeDeploy → ALB</td><td>Traffic-Shift über den Listener von Blau (v1) auf Grün (v2).</td></tr>
+          <tr><td class="n"><b class="data">3</b></td><td class="k">ECS/ALB → CloudWatch</td><td><code>HTTPCode_Target_5XX_Count</code>, <code>RequestCount</code>, <code>TargetResponseTime</code> (p99), Logs und X-Ray-Traces.</td></tr>
+          <tr><td class="n"><b class="data">4</b></td><td class="k">Synthetics → Alarm</td><td>Canary prüft den Checkout-Pfad jede Minute und liefert <code>SuccessPercent</code>.</td></tr>
+          <tr><td class="n"><b class="data">5</b></td><td class="k">Metriken → Composite Alarm</td><td>Metric Math: 5xx-Rate &gt; 2 % <b>und</b> p99 &gt; 800 ms in 3 von 5 Minuten. Zwei unabhängige Signale verringern Fehlalarme. Schwellwerte sind Beispielwerte.</td></tr>
+          <tr><td class="n"><b class="event">6</b></td><td class="k">Alarm → CodeDeploy</td><td>Schneller Pfad: Läuft das Deployment noch, stoppt CodeDeploy es und schaltet den Traffic auf Blau zurück.</td></tr>
+          <tr><td class="n"><b class="event">7</b></td><td class="k">Alarm, CodeDeploy → Standard-Bus</td><td><code>CloudWatch Alarm State Change</code> und Deployment-Events landen auf dem Standard-Bus des Workload-Kontos.</td></tr>
+          <tr><td class="n"><b class="event">8</b></td><td class="k">Standard-Bus → Ops-Bus</td><td>Kontoübergreifende Regel. Die Resource Policy des Ops-Busses akzeptiert nur Events aus den freigegebenen Workload-Konten.</td></tr>
+          <tr><td class="n"><b class="event">9</b></td><td class="k">Ops-Bus → Step Functions</td><td>Regel auf <code>state = ALARM</code> für Produktions-Services startet den Remediation-Workflow. Fehlschläge bei der Zustellung gehen in die Regel-DLQ.</td></tr>
+          <tr><td class="n"><b class="flow">10</b></td><td class="k">Lock setzen</td><td>Bedingtes Schreiben je Service mit TTL 60 Minuten. Ist der Lock belegt, wird nur benachrichtigt. So gibt es höchstens einen automatischen Eingriff je Service und Stunde.</td></tr>
+          <tr><td class="n"><b class="flow">11</b></td><td class="k">Diagnose</td><td>Liest über CloudWatch Cross-Account Observability (OAM) nur lesend: letztes Deployment mit Zeit und Version, Top-Fehler aus Logs Insights, fehlerhafte Knoten aus X-Ray.</td></tr>
+          <tr><td class="n"><b class="flow">12</b></td><td class="k">Entscheidung</td><td>Automatisch nur, wenn das Deployment höchstens 30 Minuten alt ist, die Fehler auf die neue Version konzentriert sind und die vorige Version als gesund bekannt ist. Sonst entscheidet ein Mensch.</td></tr>
+          <tr><td class="n"><b class="data">13</b></td><td class="k">Rollback</td><td>SSM Automation übernimmt die Remediation-Rolle im Workload-Konto und setzt den ECS-Service auf die vorige Task-Definition.</td></tr>
+          <tr><td class="n"><b class="event">14</b></td><td class="k">Freigabe durch On-Call</td><td>Anfrage über SNS in den Chat-Kanal (Amazon Q Developer in chat applications). Die Freigabe ruft <code>SendTaskSuccess</code> auf; ohne Antwort nach 15 Minuten wird eskaliert.</td></tr>
+          <tr><td class="n"><b class="flow">15</b></td><td class="k">Verifizieren</td><td>5 Minuten warten, dann den Alarmstatus erneut lesen.</td></tr>
+          <tr><td class="n"><b class="flow">16</b></td><td class="k">Abschluss oder Eskalation</td><td>Alarm OK → Lock freigeben, Bericht in den Chat. Weiter ALARM, Ablehnung oder ein fehlgeschlagener Task → Incident Manager pagt On-Call. Danach keine weitere Automatik.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cols">
+      <div>
+        <div class="lab err">Fehlerpfade</div>
+        <ul class="list err">
+          <li><b>Event nicht zustellbar:</b> Retry-Policy der Regel, danach Regel-DLQ mit eigenem Alarm.</li>
+          <li><b>Task schlägt fehl:</b> Jeder Task hat <code>Retry</code> für transiente Fehler und <code>Catch</code> auf „Eskalieren“.</li>
+          <li><b>Rollback hilft nicht:</b> Verifikation findet weiter ALARM → Eskalation, kein zweiter automatischer Versuch.</li>
+          <li><b>Mensch antwortet nicht:</b> Task-Token-Timeout nach 15 Minuten → Eskalation an die nächste Stufe.</li>
+          <li><b>Workflow läuft schon:</b> Lock belegt → nur Benachrichtigung, kein paralleler Eingriff.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="lab sec">Sicherheitsgrenzen</div>
+        <ul class="list sec">
+          <li>Remediation läuft im eigenen Operations-Konto. Im Workload-Konto gibt es nur eine Rolle mit <code>ecs:UpdateService</code> und <code>codedeploy:StopDeployment</code> auf die ARN dieses Service.</li>
+          <li>Diagnose ist rein lesend über OAM. Löschen, Scale-in und Änderungen an Netzwerk oder IAM sind per Permission Boundary und SCP ausgeschlossen.</li>
+          <li>Rollback nur auf die vorige, gesund gemeldete Version, höchstens einmal je Service und Stunde, nie während eines Change Freeze ohne Freigabe.</li>
+          <li>CloudTrail protokolliert jede Aktion der Rolle; der Bericht nennt Ausführungs-ARN und Entscheidungsgrund.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="lab scale">Skalierungsgrenzen</div>
+        <ul class="list scale">
+          <li>Service Auto Scaling (min 4, max 40 Tasks) bleibt aktiv, ersetzt aber keinen Rollback: Scale-out verdeckt einen Code-Fehler nur.</li>
+          <li>Der Lock begrenzt die Automatik auf einen Workflow je Service. Bei vielen Services gleichzeitig deutet das auf ein Plattformproblem hin, dann wird sofort eskaliert.</li>
+          <li>Der Canary-Anteil von 10 % begrenzt den Schaden während des Deployments auf einen Teil der Nutzenden.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">Alle Schwellwerte, Zeiten und Grenzen sind Beispielwerte für die Übung. Konkrete Service-Quotas hängen von Region und Konto ab und sollten in der AWS-Dokumentation bzw. in Service Quotas geprüft werden.</p>
+  </section>
+</div>
+
+<script>
+(function () {
+  var NS = "http://www.w3.org/2000/svg";
+  var CAT = { compute: "--c-compute", integ: "--c-integ", db: "--c-db", net: "--c-net", sec: "--c-sec", mgmt: "--c-mgmt", dev: "--c-dev", ext: "--c-ext" };
+
+  function el(tag, attrs, parent, text) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  function defs(svg, id) {
+    var d = el("defs", {}, svg);
+    ["data", "event", "error", "flow"].forEach(function (t) {
+      var m = el("marker", { id: id + "-a-" + t, viewBox: "0 0 10 10", refX: "9", refY: "5", markerWidth: "8", markerHeight: "8", markerUnits: "userSpaceOnUse", orient: "auto-start-reverse" }, d);
+      el("path", { d: "M0,0 L10,5 L0,10 z", "class": "m-" + t }, m);
+    });
+  }
+
+  function boundary(svg, b) {
+    el("rect", { x: b.x, y: b.y, width: b.w, height: b.h, rx: 8, "class": "bd" }, svg);
+    el("text", { x: b.x + 12, y: b.bottom ? b.y + b.h - 8 : b.y + 17, "class": "bdl" }, svg, b.label);
+  }
+
+  function group(svg, g) {
+    el("rect", { x: g.x, y: g.y, width: g.w, height: g.h, rx: 8, "class": "grp" }, svg);
+    var ic = el("rect", { x: g.x + 12, y: g.y + 9, width: 22, height: 18, rx: 3 }, svg);
+    ic.style.fill = "var(--c-integ)";
+    el("text", { x: g.x + 23, y: g.y + 21, "text-anchor": "middle", "class": "ic" }, svg, "SFN");
+    el("text", { x: g.x + 42, y: g.y + 22, "class": "grpl" }, svg, g.label);
+    if (g.right) el("text", { x: g.x + g.w - 12, y: g.y + 22, "text-anchor": "end", "class": "grps" }, svg, g.right);
+    if (g.foot) el("text", { x: g.x + 106, y: g.y + g.h - 10, "class": "grps" }, svg, g.foot);
+  }
+
+  function node(svg, n) {
+    var g = el("g", { "class": "node" }, svg);
+    el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 6, "class": "box" }, g);
+    var iy = n.y + (n.h - 24) / 2;
+    var ic = el("rect", { x: n.x + 9, y: iy, width: 26, height: 24, rx: 4 }, g);
+    ic.style.fill = "var(" + CAT[n.cat] + ")";
+    el("text", { x: n.x + 22, y: iy + 15.5, "text-anchor": "middle", "class": "ic" }, g, n.ic);
+    var subs = n.sub || [];
+    var top = n.y + n.h / 2 - (subs.length * 12 + 14) / 2 + 12;
+    el("text", { x: n.x + 43, y: top, "class": "t" }, g, n.t);
+    subs.forEach(function (s, i) { el("text", { x: n.x + 43, y: top + 15 + i * 12, "class": "s" }, g, s); });
+  }
+
+  function state(svg, s) {
+    var g = el("g", { "class": "st " + (s.kind || "") }, svg);
+    el("rect", { x: s.x, y: s.y, width: s.w, height: s.h, rx: s.kind === "choice" ? 4 : s.h / 2 > 20 ? 20 : s.h / 2 }, g);
+    var lines = s.t.split("\n");
+    var cy = s.y + s.h / 2 - (lines.length - 1) * 7 + 4;
+    lines.forEach(function (l, i) { el("text", { x: s.x + s.w / 2 + (s.badge ? 8 : 0), y: cy + i * 14, "text-anchor": "middle" }, g, l); });
+    if (s.badge) badge(svg, { n: s.badge, x: s.x + 15, y: s.y + s.h / 2, type: "flow" });
+  }
+
+  function edge(svg, id, e) {
+    var d = e.p.map(function (p, i) { return (i ? "L" : "M") + p[0] + "," + p[1]; }).join(" ");
+    el("path", { d: d, "class": "halo" }, svg);
+    var a = { d: d, "class": "e " + e.type };
+    if (!e.noHead) a["marker-end"] = "url(#" + id + "-a-" + e.type + ")";
+    if (e.both) a["marker-start"] = "url(#" + id + "-a-" + e.type + ")";
+    el("path", a, svg);
+  }
+
+  function badge(svg, b) {
+    var g = el("g", { "class": "bdg " + b.type }, svg);
+    el("circle", { cx: b.x, cy: b.y, r: 9.5 }, g);
+    el("text", { x: b.x, y: b.y + 3.5, "text-anchor": "middle" }, g, String(b.n));
+  }
+
+  function label(svg, l) {
+    el("text", { x: l.x, y: l.y, "text-anchor": l.a || "start", "class": "lbl" + (l.err ? " err" : "") }, svg, l.t);
+  }
+
+  function pill(svg, p) {
+    var g = el("g", { "class": "pill " + p.kind }, svg);
+    var r = el("rect", { x: p.x, y: p.y, height: 22, rx: 11 }, g);
+    var t = el("text", { x: p.x + 11, y: p.y + 15 }, g, p.t);
+    var w = 0;
+    try { w = t.getComputedTextLength(); } catch (err) { w = 0; }
+    if (!w) w = p.t.length * 5.9;
+    r.setAttribute("width", Math.ceil(w + 22));
+  }
+
+  function note(svg, n) {
+    var g = el("g", { "class": "nt " + n.kind }, svg);
+    el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 8 }, g);
+    el("text", { x: n.x + 16, y: n.y + 22, "class": "nth" }, g, n.title);
+    (n.lines || []).forEach(function (l, i) { el("text", { x: n.x + 16, y: n.y + 42 + i * 17, "class": "ntl" }, g, l); });
+  }
+
+  function render(id, spec) {
+    var svg = document.getElementById(id);
+    if (!svg) return;
+    defs(svg, id);
+    (spec.boundaries || []).forEach(function (b) { boundary(svg, b); });
+    (spec.groups || []).forEach(function (g) { group(svg, g); });
+    (spec.notes || []).forEach(function (n) { note(svg, n); });
+    (spec.edges || []).forEach(function (e) { edge(svg, id, e); });
+    (spec.nodes || []).forEach(function (n) { node(svg, n); });
+    (spec.states || []).forEach(function (s) { state(svg, s); });
+    (spec.labels || []).forEach(function (l) { label(svg, l); });
+    (spec.badges || []).forEach(function (b) { badge(svg, b); });
+    (spec.pills || []).forEach(function (p) { pill(svg, p); });
+  }
+
+  /* ---------- Szenario 2: Bestellprozess ---------- */
+  var dom = [
+    { X: 150, w: 340, name: "Lager", label: "Lager-Domäne · eigene IAM-Rolle" },
+    { X: 520, w: 340, name: "Zahlungs", label: "Zahlungs-Domäne · PCI-Scope, Secrets Manager" },
+    { X: 890, w: 330, name: "Versand", label: "Versand-Domäne · eigene IAM-Rolle" }
+  ];
+  var d2 = {
+    boundaries: [
+      { x: 150, y: 50, w: 360, h: 260, label: "Öffentliche Kante · TLS, WAF, Auth" },
+      { x: 530, y: 50, w: 690, h: 260, label: "Bestell-Domäne · eigenes Konto, KMS" }
+    ],
+    groups: [
+      { x: 150, y: 345, w: 1070, h: 180, label: "Step Functions Standard · Saga OrderFulfillment", right: "Retry je Task 3×, Backoff ×2 mit Jitter · Catch → Kompensation" }
+    ],
+    nodes: [
+      { x: 12, y: 96, w: 130, h: 64, cat: "ext", ic: "APP", t: "Shop / App", sub: ["Idempotency-Key", "← 202 + orderId"] },
+      { x: 165, y: 96, w: 150, h: 64, cat: "net", ic: "CF", t: "CloudFront", sub: ["+ AWS WAF", "Rate-Regeln"] },
+      { x: 340, y: 96, w: 150, h: 64, cat: "integ", ic: "API", t: "API Gateway", sub: ["Schema-Validierung", "Throttling"] },
+      { x: 340, y: 216, w: 150, h: 64, cat: "sec", ic: "COG", t: "Cognito", sub: ["JWT-Authorizer"] },
+      { x: 550, y: 96, w: 150, h: 64, cat: "compute", ic: "λ", t: "Order API", sub: ["prüft Key,", "schreibt PENDING"] },
+      { x: 550, y: 216, w: 150, h: 64, cat: "db", ic: "DDB", t: "Idempotenz", sub: ["Key → Antwort", "TTL 24 h"] },
+      { x: 740, y: 96, w: 150, h: 64, cat: "db", ic: "DDB", t: "Orders", sub: ["Status je Bestellung", "Stream aktiv"] },
+      { x: 920, y: 96, w: 130, h: 64, cat: "integ", ic: "EB", t: "Pipes", sub: ["Filter INSERT", "→ OrderPlaced"] },
+      { x: 1075, y: 96, w: 130, h: 64, cat: "integ", ic: "EB", t: "Event Bus", sub: ["orders-bus", "Regel-DLQ"] },
+      { x: 920, y: 216, w: 130, h: 64, cat: "integ", ic: "EB", t: "Archiv", sub: ["Replay", "bei Bedarf"] },
+      { x: 695, y: 800, w: 145, h: 56, cat: "ext", ic: "EXT", t: "Zahlungsanbieter", sub: ["Idempotency-Key"] },
+      { x: 1065, y: 800, w: 145, h: 56, cat: "ext", ic: "EXT", t: "Spediteur-API", sub: ["Referenz = orderId"] }
+    ],
+    states: [
+      { x: 180, y: 385, w: 190, h: 40, t: "Lager reservieren" },
+      { x: 420, y: 385, w: 190, h: 40, t: "Zahlung belasten" },
+      { x: 660, y: 385, w: 190, h: 40, t: "Versand beauftragen" },
+      { x: 900, y: 385, w: 190, h: 40, t: "CONFIRMED + Event", kind: "ok" },
+      { x: 180, y: 448, w: 190, h: 40, t: "Reservierung freigeben", kind: "comp" },
+      { x: 660, y: 448, w: 190, h: 40, t: "Zahlung erstatten", kind: "comp" },
+      { x: 900, y: 448, w: 190, h: 40, t: "FAILED + Kunde informieren", kind: "comp" }
+    ],
+    edges: [
+      { type: "data", p: [[142, 128], [165, 128]] },
+      { type: "data", p: [[315, 128], [340, 128]] },
+      { type: "data", both: true, p: [[415, 160], [415, 216]] },
+      { type: "data", p: [[490, 128], [550, 128]] },
+      { type: "data", p: [[625, 160], [625, 216]] },
+      { type: "data", p: [[700, 128], [740, 128]] },
+      { type: "event", p: [[890, 128], [920, 128]] },
+      { type: "event", p: [[1050, 128], [1075, 128]] },
+      { type: "event", p: [[1100, 160], [1100, 248], [1050, 248]] },
+      { type: "event", p: [[1170, 160], [1170, 345]] },
+      { type: "data", p: [[815, 345], [815, 160]] },
+      { type: "flow", p: [[370, 405], [420, 405]] },
+      { type: "flow", p: [[610, 405], [660, 405]] },
+      { type: "flow", p: [[850, 405], [900, 405]] },
+      { type: "error", p: [[755, 425], [755, 448]] },
+      { type: "error", p: [[660, 468], [370, 468]] },
+      { type: "error", noHead: true, p: [[515, 425], [515, 468]] },
+      { type: "error", p: [[275, 488], [275, 506], [995, 506], [995, 488]] }
+    ],
+    labels: [
+      { x: 430, y: 192, t: "JWT prüfen" },
+      { x: 640, y: 192, t: "Key sichern" },
+      { x: 822, y: 300, t: "Status-Update" },
+      { x: 1160, y: 334, a: "end", t: "StartExecution, Name = orderId" },
+      { x: 1108, y: 240, t: "archivieren" },
+      { x: 764, y: 441, t: "Catch", err: true },
+      { x: 524, y: 444, t: "Catch", err: true },
+      { x: 284, y: 520, t: "abgelehnt / nicht lieferbar", err: true }
+    ],
+    badges: [
+      { n: 1, x: 153, y: 112, type: "data" },
+      { n: 2, x: 327, y: 112, type: "data" },
+      { n: 3, x: 415, y: 188, type: "data" },
+      { n: 4, x: 520, y: 112, type: "data" },
+      { n: 5, x: 625, y: 188, type: "data" },
+      { n: 6, x: 720, y: 112, type: "data" },
+      { n: 7, x: 905, y: 112, type: "event" },
+      { n: 8, x: 1062, y: 112, type: "event" },
+      { n: 9, x: 1170, y: 250, type: "event" },
+      { n: 13, x: 815, y: 250, type: "data" }
+    ],
+    pills: [
+      { x: 165, y: 286, kind: "scale", t: "⇅ Usage Plan: Drosselung je Client" },
+      { x: 150, y: 800, kind: "scale", t: "⇅ Queues puffern Lastspitzen" },
+      { x: 150, y: 830, kind: "scale", t: "⇅ Reserved Concurrency schützt Ratenlimit des Anbieters" }
+    ],
+    notes: [
+      { x: 150, y: 880, w: 1070, h: 50, kind: "obs", title: "Nachvollziehbarkeit über alle Schritte", lines: [] }
+    ]
+  };
+  d2.notes[0].title = "Nachvollziehbarkeit:  X-Ray-Trace API → Worker  ·  Logs mit orderId  ·  Step-Functions-Historie  ·  EventBridge-Archiv  ·  CloudTrail  ·  DLQ-Alarme";
+  d2.notes[0].h = 36;
+  d2.notes[0].y = 890;
+
+  dom.forEach(function (d) {
+    var qx = d.X + 15, wx = d.X + 175, qcx = qx + 72.5, wcx = wx + 72.5;
+    d2.boundaries.push({ x: d.X, y: 570, w: d.w, h: 200, label: d.label, bottom: true });
+    d2.nodes.push(
+      { x: qx, y: 612, w: 145, h: 56, cat: "integ", ic: "SQS", t: d.name + "-Queue", sub: ["Redrive nach 5×"] },
+      { x: wx, y: 612, w: 145, h: 56, cat: "compute", ic: "λ", t: d.name + "-Worker", sub: ["idempotent"] },
+      { x: qx, y: 700, w: 145, h: 56, cat: "integ", ic: "SQS", t: "DLQ", sub: ["Alarm bei > 0"] },
+      { x: wx, y: 700, w: 145, h: 56, cat: "db", ic: "DDB", t: "Dedupe", sub: ["orderId#schritt"] }
+    );
+    d2.edges.push(
+      { type: "event", p: [[qcx, 525], [qcx, 612]] },
+      { type: "event", p: [[wcx, 612], [wcx, 525]] },
+      { type: "data", p: [[qx + 145, 640], [wx, 640]] },
+      { type: "data", p: [[wcx, 668], [wcx, 700]] },
+      { type: "error", p: [[qcx, 668], [qcx, 700]] }
+    );
+    d2.badges.push(
+      { n: 10, x: qcx, y: 547, type: "event" },
+      { n: 12, x: wcx, y: 547, type: "event" },
+      { n: 11, x: wcx - 18, y: 684, type: "data" }
+    );
+    d2.labels.push(
+      { x: qcx + 15, y: 551, t: "Task-Token" },
+      { x: wcx + 15, y: 551, t: "Ergebnis" },
+      { x: qcx + 7, y: 688, t: "nach 5×", err: true }
+    );
+  });
+  d2.edges.push(
+    { type: "data", p: [[840, 640], [870, 640], [870, 828], [840, 828]] },
+    { type: "data", p: [[1210, 640], [1230, 640], [1230, 828], [1210, 828]] }
+  );
+  render("d2", d2);
+
+  /* ---------- Szenario 3: Remediation ---------- */
+  var d3 = {
+    boundaries: [
+      { x: 20, y: 50, w: 580, h: 490, label: "Workload-Konto prod · Remediation-Rolle nur für diesen Service" },
+      { x: 640, y: 50, w: 590, h: 830, label: "Operations-Konto · Permission Boundary, SCP, CloudTrail" }
+    ],
+    groups: [
+      { x: 850, y: 72, w: 355, h: 520, label: "Step Functions · Remediation", foot: "Catch → Eskalieren" }
+    ],
+    nodes: [
+      { x: 40, y: 90, w: 130, h: 60, cat: "ext", ic: "USR", t: "Nutzende", sub: ["HTTPS"] },
+      { x: 220, y: 90, w: 150, h: 60, cat: "net", ic: "ALB", t: "Load Balancer", sub: ["Listener blau/grün"] },
+      { x: 420, y: 90, w: 160, h: 60, cat: "compute", ic: "ECS", t: "ECS-Service", sub: ["v2 grün, v1 blau", "Auto Scaling 4 bis 40"] },
+      { x: 40, y: 210, w: 150, h: 60, cat: "dev", ic: "CP", t: "CodePipeline", sub: ["Build, Tests"] },
+      { x: 220, y: 210, w: 150, h: 60, cat: "dev", ic: "CD", t: "CodeDeploy", sub: ["Canary 10 %, 5 min", "Alarme gebunden"] },
+      { x: 420, y: 210, w: 160, h: 60, cat: "mgmt", ic: "CW", t: "CloudWatch", sub: ["5xx, p99, Logs", "X-Ray-Traces"] },
+      { x: 40, y: 330, w: 150, h: 60, cat: "mgmt", ic: "CW", t: "Synthetics", sub: ["Checkout-Canary", "jede Minute"] },
+      { x: 420, y: 330, w: 160, h: 60, cat: "mgmt", ic: "CW", t: "Composite Alarm", sub: ["5xx > 2 % UND", "p99 > 800 ms, 3 von 5"] },
+      { x: 420, y: 450, w: 160, h: 60, cat: "integ", ic: "EB", t: "Standard-Bus", sub: ["Alarm- und", "Deploy-Events"] },
+      { x: 660, y: 92, w: 150, h: 56, cat: "db", ic: "DDB", t: "Lock-Tabelle", sub: ["je Service", "TTL 60 min"] },
+      { x: 660, y: 164, w: 150, h: 56, cat: "mgmt", ic: "CW", t: "CloudWatch OAM", sub: ["Metriken, Logs, Traces", "nur lesend"] },
+      { x: 660, y: 306, w: 150, h: 56, cat: "mgmt", ic: "SSM", t: "SSM Automation", sub: ["Rollback-Runbook"] },
+      { x: 660, y: 450, w: 150, h: 60, cat: "integ", ic: "EB", t: "Ops-Bus", sub: ["Regel: state ALARM", "nur prod-Services"] },
+      { x: 660, y: 560, w: 150, h: 56, cat: "integ", ic: "SQS", t: "Regel-DLQ", sub: ["Alarm → SNS"] },
+      { x: 870, y: 640, w: 150, h: 56, cat: "integ", ic: "SNS", t: "SNS-Topic", sub: ["Status, Freigabe"] },
+      { x: 1035, y: 640, w: 150, h: 56, cat: "mgmt", ic: "IM", t: "Incident Mgr.", sub: ["Eskalation, Pager"] },
+      { x: 870, y: 750, w: 150, h: 56, cat: "mgmt", ic: "Q", t: "Chat-Kanal", sub: ["Amazon Q Developer", "in Chat-Apps"] },
+      { x: 1035, y: 750, w: 150, h: 56, cat: "ext", ic: "OPS", t: "On-Call", sub: ["Mensch entscheidet"] }
+    ],
+    states: [
+      { x: 870, y: 110, w: 315, h: 40, t: "Lock je Service setzen", badge: 10 },
+      { x: 870, y: 172, w: 315, h: 40, t: "Diagnose sammeln", badge: 11 },
+      { x: 870, y: 234, w: 315, h: 40, t: "Deployment-korreliert und Ziel gesund?", kind: "choice", badge: 12 },
+      { x: 870, y: 300, w: 150, h: 52, t: "Rollback\nstarten", badge: 13 },
+      { x: 1035, y: 300, w: 150, h: 52, t: "Freigabe anfragen\nTask-Token, 15 min" },
+      { x: 870, y: 382, w: 150, h: 40, t: "5 min warten", badge: 15 },
+      { x: 870, y: 444, w: 150, h: 40, t: "Alarm OK?", kind: "choice" },
+      { x: 870, y: 516, w: 150, h: 48, t: "Lock frei, Bericht", kind: "ok", badge: 16 },
+      { x: 1035, y: 516, w: 150, h: 48, t: "Eskalieren", kind: "comp" }
+    ],
+    edges: [
+      { type: "data", p: [[170, 120], [220, 120]] },
+      { type: "data", p: [[370, 120], [420, 120]] },
+      { type: "data", p: [[190, 240], [220, 240]] },
+      { type: "data", p: [[295, 210], [295, 150]] },
+      { type: "data", p: [[500, 150], [500, 210]] },
+      { type: "data", p: [[500, 270], [500, 330]] },
+      { type: "event", p: [[295, 270], [295, 480], [420, 480]] },
+      { type: "data", p: [[190, 360], [420, 360]] },
+      { type: "event", p: [[420, 345], [395, 345], [395, 255], [370, 255]] },
+      { type: "event", p: [[500, 390], [500, 450]] },
+      { type: "event", p: [[580, 480], [660, 480]] },
+      { type: "event", p: [[810, 480], [850, 480]] },
+      { type: "error", p: [[735, 510], [735, 560]] },
+      { type: "data", p: [[870, 130], [810, 130]] },
+      { type: "data", p: [[810, 192], [870, 192]] },
+      { type: "data", p: [[870, 326], [810, 326]] },
+      { type: "data", p: [[660, 334], [612, 334], [612, 120], [580, 120]] },
+      { type: "flow", p: [[1027, 150], [1027, 172]] },
+      { type: "flow", p: [[1027, 212], [1027, 234]] },
+      { type: "flow", p: [[945, 274], [945, 300]] },
+      { type: "flow", p: [[1110, 274], [1110, 300]] },
+      { type: "flow", p: [[1035, 326], [1020, 326]] },
+      { type: "flow", p: [[945, 352], [945, 382]] },
+      { type: "flow", p: [[945, 422], [945, 444]] },
+      { type: "flow", p: [[945, 484], [945, 516]] },
+      { type: "error", p: [[1020, 464], [1080, 464], [1080, 516]] },
+      { type: "error", p: [[1160, 352], [1160, 516]] },
+      { type: "event", p: [[945, 564], [945, 640]] },
+      { type: "error", p: [[1110, 564], [1110, 640]] },
+      { type: "event", p: [[945, 696], [945, 750]] },
+      { type: "error", p: [[1110, 696], [1110, 750]] },
+      { type: "event", p: [[1020, 778], [1035, 778]] },
+      { type: "event", p: [[1185, 778], [1215, 778], [1215, 326], [1185, 326]] }
+    ],
+    labels: [
+      { x: 309, y: 184, t: "Traffic-Shift" },
+      { x: 514, y: 184, t: "Metriken, Logs, Traces" },
+      { x: 262, y: 378, t: "SuccessPercent" },
+      { x: 384, y: 304, a: "end", t: "Auto-Rollback" },
+      { x: 514, y: 424, t: "Alarm-Event" },
+      { x: 305, y: 498, t: "Deployment-Events" },
+      { x: 620, y: 440, a: "middle", t: "Kontogrenze" },
+      { x: 744, y: 540, t: "Ziel-Fehler", err: true },
+      { x: 620, y: 292, t: "vorige Task-Definition" },
+      { x: 953, y: 291, t: "ja" },
+      { x: 1118, y: 291, t: "nein" },
+      { x: 953, y: 505, t: "ja" },
+      { x: 1028, y: 458, t: "nein", err: true },
+      { x: 1152, y: 445, a: "end", t: "abgelehnt / Timeout", err: true },
+      { x: 953, y: 615, t: "Bericht" },
+      { x: 1118, y: 615, t: "Pager", err: true },
+      { x: 1207, y: 755, a: "end", t: "Freigabe" }
+    ],
+    badges: [
+      { n: 1, x: 205, y: 226, type: "data" },
+      { n: 2, x: 295, y: 180, type: "data" },
+      { n: 3, x: 500, y: 180, type: "data" },
+      { n: 4, x: 240, y: 360, type: "data" },
+      { n: 5, x: 500, y: 300, type: "data" },
+      { n: 6, x: 395, y: 300, type: "event" },
+      { n: 7, x: 500, y: 420, type: "event" },
+      { n: 8, x: 620, y: 466, type: "event" },
+      { n: 9, x: 830, y: 466, type: "event" },
+      { n: 13, x: 612, y: 230, type: "data" },
+      { n: 14, x: 1215, y: 560, type: "event" }
+    ],
+    pills: [
+      { x: 40, y: 408, kind: "scale", t: "⇅ Scale-out ersetzt keinen Rollback" },
+      { x: 660, y: 240, kind: "sec", t: "Lesen über OAM, kein Schreibrecht" },
+      { x: 660, y: 372, kind: "sec", t: "max. 1 Auto-Rollback / h" }
+    ],
+    notes: [
+      { x: 20, y: 570, w: 580, h: 166, kind: "sec", title: "Leitplanken für automatische Eingriffe", lines: [
+        "Rollback nur auf die vorige, gesund gemeldete Task-Definition",
+        "Höchstens 1 automatischer Rollback je Service und Stunde (Lock)",
+        "Remediation-Rolle: ecs:UpdateService, codedeploy:StopDeployment, nur diese ARN",
+        "Kein Löschen, kein Scale-in, keine Netz- oder IAM-Änderung (Boundary, SCP)",
+        "Change Freeze oder unklare Diagnose: immer menschliche Freigabe",
+        "Jede Aktion in CloudTrail, Bericht mit Ausführungs-ARN und Grund",
+        "Canary 10 % begrenzt den Schaden während des Deployments"
+      ] }
+    ]
+  };
+  render("d3", d3);
+})();
+</script>

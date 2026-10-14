@@ -21,3 +21,6 @@ fixture server, so they pass without a deployed application - see
 [`robot/README.md`](robot/README.md). Nothing in CI deploys the `infra/`
 templates, so linting is all that guards them - see
 [`infra/README.md`](infra/README.md).
+
+`docs/` holds the AWS architecture diagram exercise and a script that exports
+it to PDF, outside CI - see [`docs/README.md`](docs/README.md).
